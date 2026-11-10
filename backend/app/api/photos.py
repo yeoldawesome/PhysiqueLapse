@@ -199,6 +199,8 @@ def apply_patch(s: Session, p: Photo, patch: PhotoPatch) -> None:
         feats = s.get(PoseFeatures, p.id)
         if feats is not None:
             s.delete(feats)  # recomputed from the cached landmarks by the next classify job
+        if p.pose_source != "manual":
+            p.pose_confidence = None  # the pose may have changed side: the next classify re-checks it
         _mark_alignment_stale(s, p.id)
         changed = True
     if patch.clear_pose:

@@ -4,6 +4,7 @@ import { useCategories, useCategoryMutations, useSaveSettings, useSettings, useS
 import type { Category, Settings as S } from "../api/types";
 import { ConfirmButton, Field, PageHeader, Spinner, Toggle } from "../components/ui";
 import { fmtBytes } from "../lib/format";
+import PoseTeaching from "../components/PoseTeaching";
 
 function CategoryRow({ c }: { c: Category }) {
   const { update, remove } = useCategoryMutations();
@@ -15,7 +16,7 @@ function CategoryRow({ c }: { c: Category }) {
       <td className="px-3 py-2">
         <input className="input w-full" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name !== c.name && u({ name })} />
         <div className="mt-0.5 text-[11px] text-muted">
-          {c.photo_count} photos{c.is_builtin ? " · built-in rules" : " · learned from your labels (kNN)"}
+          {c.photo_count} photos
         </div>
       </td>
       <td className="px-3 py-2">
@@ -115,6 +116,8 @@ export default function Settings() {
         </button>
       </PageHeader>
       <div className="flex max-w-6xl flex-col gap-6 p-6">
+        <PoseTeaching />
+
         <section className="card p-4">
           <h2 className="mb-3 font-medium">Pose categories</h2>
           <div className="overflow-x-auto">
@@ -178,9 +181,9 @@ export default function Settings() {
             <Toggle checked={draft.flip_tta} onChange={(v) => set("flip_tta", v)} />
           </Field>
           <NumberField label="Review below confidence" value={draft.review_confidence} step={0.05} onChange={(v) => set("review_confidence", v)} />
-          <NumberField label="kNN k" value={draft.knn_k} onChange={(v) => set("knn_k", v)} />
-          <NumberField label="kNN after N labels" value={draft.knn_min_labels} onChange={(v) => set("knn_min_labels", v)} />
-          <NumberField label="kNN min categories" value={draft.knn_min_categories} onChange={(v) => set("knn_min_categories", v)} />
+          <NumberField label="Examples averaged per pose" hint="how many of a pose's closest examples count when matching" value={draft.knn_k} onChange={(v) => set("knn_k", v)} min={1} />
+          <NumberField label="Examples before matching" hint="with fewer, built-in rules are used" value={draft.knn_min_labels} onChange={(v) => set("knn_min_labels", v)} min={1} />
+          <NumberField label="Poses with examples before matching" value={draft.knn_min_categories} onChange={(v) => set("knn_min_categories", v)} min={1} />
         </section>
 
         <section className="card grid grid-cols-2 gap-4 p-4 md:grid-cols-4">

@@ -100,6 +100,19 @@ class PoseLabel(SQLModel, table=True):
     created_at: NaiveDatetime = Field(default_factory=now)
 
 
+class PoseExample(SQLModel, table=True):
+    """An uploaded example image of a pose (a library photo set by hand is a PoseLabel instead)."""
+
+    __tablename__ = "pose_examples"
+
+    id: int | None = Field(default=None, primary_key=True)
+    pose_category_id: int = Field(foreign_key="pose_categories.id", index=True)
+    original_filename: str = ""
+    vector: list = Field(default_factory=list, sa_column=Column(JSON))
+    feature_version: int = 0
+    created_at: NaiveDatetime = Field(default_factory=now)
+
+
 class Alignment(SQLModel, table=True):
     __tablename__ = "alignments"
 

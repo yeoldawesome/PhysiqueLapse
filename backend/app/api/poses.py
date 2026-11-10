@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ..db import get_session
 from ..jobs import job_to_dict, runner
-from ..models import Alignment, Photo, PoseCategory, PoseLabel, now
+from ..models import Alignment, Photo, PoseCategory, PoseExample, PoseLabel, now
 from ..schemas import CategoryIn, category_out
 
 router = APIRouter(prefix="/poses", tags=["poses"])
@@ -130,6 +131,10 @@ def delete_category(cid: int, s: Session = Depends(get_session)) -> dict[str, An
         moved += 1
     for lab in s.exec(select(PoseLabel).where(PoseLabel.pose_category_id == cid)).all():
         s.delete(lab)
+    from ..services.examples import delete_example as _delete_example
+
+    for ex in s.exec(select(PoseExample).where(PoseExample.pose_category_id == cid)).all():
+        _delete_example(s, ex)
     for a in s.exec(select(Alignment).where(Alignment.pose_category_id == cid)).all():
         a.stale = True
         s.add(a)
@@ -173,6 +178,79 @@ def _enqueue(type_: str, params: dict) -> dict[str, Any]:
 def classify(body: dict | None = None, s: Session = Depends(get_session)) -> dict[str, Any]:
     body = body or {}
     return _enqueue("classify_poses", {"ids": body.get("ids"), "force": bool(body.get("force", False))})
+
+
+@router.get("/examples")
+def examples(s: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    """The examples the classifier learns from (hand-set library photos and uploads), with the
+    ones that look like another pose flagged."""
+    from ..services.classify import example_report
+    from ..settings import load_settings
+
+    rep = example_report(s, load_settings(s))
+    for r in rep:
+        if r["kind"] == "photo":
+            p = s.get(Photo, r["id"])
+            r["thumb_url"] = f"/api/photos/{r['id']}/thumb"
+            r["flip_horizontal"] = bool(p and p.flip_horizontal)
+            r["title"] = p.original_filename if p else f"photo {r['id']}"
+        else:
+            ex = s.get(PoseExample, r["id"])
+            r["thumb_url"] = f"/api/poses/examples/{r['id']}/thumb"
+            r["flip_horizontal"] = False
+            r["title"] = ex.original_filename if ex else f"upload {r['id']}"
+    return rep
+
+
+@router.post("/{cid}/examples")
+async def upload_examples(cid: int, files: list[UploadFile] = File(...), s: Session = Depends(get_session)) -> dict[str, Any]:
+    """Upload example images of this pose. Each is run through the pose model right away."""
+    from ..services.examples import add_upload
+    from ..settings import load_settings
+
+    cat = _get(s, cid)
+    st = load_settings(s)
+    added, rejected = [], []
+    for up in files:
+        raw = await up.read()
+        name = up.filename or "image"
+        try:
+            ex = add_upload(s, cat, name, raw, variant=st.pose_model, long_side=st.landmark_input_long_side, tta=st.flip_tta)
+            added.append(ex.id)
+        except ValueError as e:
+            rejected.append({"file": name, "reason": str(e)})
+        except Exception as e:  # unreadable file, model missing, ...
+            rejected.append({"file": name, "reason": f"could not read: {e}"})
+    return {"added": added, "rejected": rejected}
+
+
+@router.delete("/examples/{eid}")
+def delete_example(eid: int, s: Session = Depends(get_session)) -> dict[str, Any]:
+    from ..services.examples import delete_example as _delete
+
+    ex = s.get(PoseExample, eid)
+    if ex is None:
+        raise HTTPException(404, "example not found")
+    _delete(s, ex)
+    return {"ok": True}
+
+
+@router.get("/examples/{eid}/thumb")
+def example_thumb(eid: int, s: Session = Depends(get_session)):
+    from ..services.examples import thumb_path
+
+    if s.get(PoseExample, eid) is None or not thumb_path(eid).exists():
+        raise HTTPException(404, "example not found")
+    return FileResponse(thumb_path(eid), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=31536000, immutable"})
+
+
+@router.get("/examples/{eid}/image")
+def example_image(eid: int, s: Session = Depends(get_session)):
+    from ..services.examples import example_path
+
+    if s.get(PoseExample, eid) is None or not example_path(eid).exists():
+        raise HTTPException(404, "example not found")
+    return FileResponse(example_path(eid), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=31536000, immutable"})
 
 
 @router.post("/{cid}/align")

@@ -1,8 +1,8 @@
-"""Pose classification: hand-written rules, replaced by kNN over your own labels
-once there are enough of them.
+"""Pose classification.
 
-Rules only know the built-in categories (rule_key). User-created categories are
-learned exclusively through kNN.
+A photo goes to the pose whose examples its joints and angles are closest to (PoseMatcher
+over the examples in services/examples.py: library photos you set by hand plus uploads).
+Until there are examples, hand-written rules for the built-in categories are used instead.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from ..models import Alignment, Photo, PoseCategory, PoseFeatures, PoseLabel, no
 from ..settings import AppSettings, load_settings
 from . import features as F
 from . import landmarks as L
+from .examples import Example
 
 log = logging.getLogger(__name__)
 
@@ -160,45 +161,105 @@ def predict_rules(vec: list[float] | None, cats_by_key: dict[str, int]) -> Predi
     return Prediction(cats_by_key[top_key], round(conf, 4), "rule")
 
 
-class KNN:
-    def __init__(self, X: np.ndarray, y: np.ndarray, k: int) -> None:
-        self.mu = X.mean(axis=0)
-        self.sd = X.std(axis=0)
-        self.sd[self.sd < 1e-6] = 1.0
-        self.X = (X - self.mu) / self.sd
-        self.y = y
-        self.k = max(1, min(k, len(y)))
+# How far apart two values must be to count as "a different pose", per feature. Angles in
+# degrees, lengths in torso lengths. Distances between poses are measured in these units,
+# so joint angles and arm positions dominate and body proportions barely matter.
+_SCALE = {
+    "elbow_angle": 30.0,
+    "shoulder_abduction": 30.0,
+    "wrist_height": 0.3,
+    "wrist_lateral": 0.3,
+    "elbow_lateral": 0.3,
+    "shoulder_width": 0.15,  # narrow shoulders = turned to the side
+    "hip_width": 0.5,
+    "shoulder_hip_ratio": 0.6,
+    "facing_nose": 0.4,
+    "facing_ears": 0.6,
+    "facing_z": 0.4,
+    "face_visibility": 0.3,
+    "legs_visibility": 0.6,
+}
+WEIGHTS = np.array([1.0 / _SCALE[n[:-2] if n.endswith(("_l", "_r")) else n] for n in F.FEATURE_NAMES])
+FAR = 4.0  # a photo further than this from every pose's examples goes to Other
+
+
+class PoseMatcher:
+    """Nearest-example matcher: a photo goes to the pose whose examples its joints and angles
+    are closest to. Each pose's distance is the mean of its k closest examples (k small, so
+    one odd example cannot hide a good match and one good example is enough)."""
+
+    def __init__(self, examples: list[Example], k: int = 2, other: int | None = None) -> None:
+        self.X = np.array([e.vector for e in examples], dtype=np.float64) * WEIGHTS
+        self.y = np.array([e.category_id for e in examples])
+        self.k = max(1, k)
+        self.other = other
+        self.categories = sorted(set(self.y.tolist()))
+
+    def distances(self, vec: list[float]) -> dict[int, float]:
+        q = np.asarray(vec, dtype=np.float64) * WEIGHTS
+        d = np.linalg.norm(self.X - q, axis=1)
+        return {c: float(np.sort(d[self.y == c])[: self.k].mean()) for c in self.categories}
 
     def predict(self, vec: list[float]) -> tuple[int, float]:
-        q = (np.asarray(vec, dtype=np.float64) - self.mu) / self.sd
-        d = np.linalg.norm(self.X - q, axis=1)
-        idx = np.argsort(d)[: self.k]
-        w = 1.0 / (d[idx] + 1e-3)
-        votes: dict[int, float] = {}
-        for i, wi in zip(idx, w, strict=True):
-            votes[int(self.y[i])] = votes.get(int(self.y[i]), 0.0) + float(wi)
-        best = max(votes.items(), key=lambda kv: kv[1])
-        return best[0], best[1] / sum(votes.values())
+        """(category id, confidence). Confidence is d2 / (d1 + d2): 0.5 when the two nearest
+        poses are equally close, 1.0 when the match is unambiguous."""
+        ranked = sorted(self.distances(vec).items(), key=lambda kv: kv[1])
+        best, d1 = ranked[0]
+        if self.other is not None and best != self.other and d1 > FAR:
+            return self.other, round(min(1.0, d1 / FAR - 1.0) * 0.5 + 0.5, 4)
+        d2 = ranked[1][1] if len(ranked) > 1 else 2.0 * d1 + 1e-6
+        conf = d2 / (d1 + d2) if d1 + d2 > 0 else 1.0
+        return int(best), round(float(conf), 4)
 
 
-def knn_active(labels: list[tuple[int, list[float]]], settings: AppSettings) -> bool:
-    cats = {c for c, _ in labels}
-    return len(labels) >= settings.knn_min_labels and len(cats) >= settings.knn_min_categories
+def matcher_active(examples: list[Example], settings: AppSettings) -> bool:
+    cats = {e.category_id for e in examples}
+    return len(examples) >= settings.knn_min_labels and len(cats) >= settings.knn_min_categories
 
 
-def build_knn(s: Session, settings: AppSettings) -> KNN | None:
-    rows = s.exec(select(PoseLabel)).all()
-    data: list[tuple[int, list[float]]] = []
-    for lab in rows:
-        feats = s.get(PoseFeatures, lab.photo_id)
-        vec = feats.vector if feats is not None and feats.vector else lab.vector
-        if vec and len(vec) == len(F.FEATURE_NAMES):
-            data.append((lab.pose_category_id, vec))
-    if not knn_active(data, settings):
+def build_matcher(s: Session, settings: AppSettings, **exclude) -> PoseMatcher | None:
+    from .examples import training_set
+
+    data = training_set(s, **exclude)
+    if not matcher_active(data, settings):
         return None
-    X = np.array([v for _, v in data], dtype=np.float64)
-    y = np.array([c for c, _ in data])
-    return KNN(X, y, settings.knn_k)
+    other = s.exec(select(PoseCategory.id).where(PoseCategory.rule_key == "other")).first()
+    return PoseMatcher(data, settings.knn_k, other)
+
+
+def example_report(s: Session, settings: AppSettings) -> list[dict]:
+    """Every example (hand-set library photo or upload) with the pose the *other* examples say
+    it looks like (leave-one-out). An example that looks like another pose is either in the
+    wrong pose or a pose two groups share, and pulls look-alike photos the wrong way either way."""
+    from .examples import sibling_map, training_set
+
+    cats = s.exec(select(PoseCategory)).all()
+    cats_by_key = {c.rule_key: c.id for c in cats if c.rule_key}
+    key_of = {c.id: c.rule_key for c in cats}
+    other = cats_by_key.get("other")
+    base = training_set(s, mirror=False)  # read once; the leave-one-out below works in memory
+    sib = sibling_map(s)
+    out = []
+    for e in base:
+        rest = [x for x in base if not (x.source == e.source and x.ref_id == e.ref_id)]
+        rest += [Example(sib.get(x.category_id, x.category_id), F.mirror(x.vector), "mirror", x.ref_id) for x in rest]
+        looks_like, agree = None, None
+        if matcher_active(rest, settings):
+            pred, _ = PoseMatcher(rest, settings.knn_k, other).predict(e.vector)
+            pred = refine_arm(key_of.get(pred), e.vector, cats_by_key) or pred
+            agree = pred == e.category_id
+            if not agree:
+                looks_like = pred
+        arm = refine_arm(key_of.get(e.category_id), e.vector, cats_by_key)
+        if arm is not None and arm != e.category_id:  # e.g. an "Arm 90" example with a straight arm
+            looks_like, agree = arm, False
+        out.append({"kind": e.source, "id": e.ref_id, "pose_category_id": e.category_id, "looks_like": looks_like, "agrees": agree})
+    # hand-set photos without a usable pose (no person found) teach nothing but are still listed
+    listed = {r["id"] for r in out if r["kind"] == "photo"}
+    for lab in s.exec(select(PoseLabel)).all():
+        if lab.photo_id not in listed:
+            out.append({"kind": "photo", "id": lab.photo_id, "pose_category_id": lab.pose_category_id, "looks_like": None, "agrees": None, "no_pose": True})
+    return out
 
 
 def ensure_features(s: Session, photo: Photo) -> list[float] | None:
@@ -248,6 +309,33 @@ def side_sibling(rule_key: str | None, vec: list[float] | None, cats_by_key: dic
     return None
 
 
+ARM_FAMILIES = [("selfie_side_down_left", "selfie_side_90_left"), ("selfie_side_down_right", "selfie_side_90_right")]
+ARM_BENT_DEG = 132  # shown arm's elbow: below = bent to ~90° (Arm 90), above = hanging by the side (Arm Down)
+
+
+def shown_elbow(vec: list[float]) -> float:
+    """Elbow angle of the arm being shown in a mirror selfie (the arm not holding the phone)."""
+    d = F.as_dict(vec)
+
+    def phone(sd: str) -> float:
+        h = d[f"wrist_height_{sd}"]
+        return gmean(lt(d[f"elbow_angle_{sd}"], 55, 8), gt(h, -0.6, 0.1), lt(h, 0.1, 0.08), lt(d[f"wrist_lateral_{sd}"], 0.55, 0.06))
+
+    shown = "r" if phone("l") >= phone("r") else "l"
+    return d[f"elbow_angle_{shown}"]
+
+
+def refine_arm(rule_key: str | None, vec: list[float] | None, cats_by_key: dict[str, int]) -> int | None:
+    """Side mirror selfies: the matcher finds 'side selfie' well but mixes up arm down and arm
+    bent, which is one clear number (the shown elbow), so that decides between the two."""
+    if not rule_key or vec is None:
+        return None
+    for down, bent in ARM_FAMILIES:
+        if rule_key in (down, bent):
+            return cats_by_key.get(bent if shown_elbow(vec) < ARM_BENT_DEG else down)
+    return None
+
+
 def _queue_abs_check() -> None:
     """Keep the abs, sleeves and face checks up to date with the poses: after classifying, check
     any photos not yet checked (a no-op when all are checked)."""
@@ -265,7 +353,13 @@ def _queue_abs_check() -> None:
 
 @job("classify_poses", lane="cv", title="Classify poses")
 def job_classify(ctx: JobContext, params: dict) -> dict:
+    """By default only photos that still need a decision: never classified (new imports, a
+    deleted category, a flip) or borderline (needs review). Confident automatic poses stay as
+    they are. Borderline ones get a fresh look each run, with the kNN rebuilt from every pose
+    you have set or accepted since, which is what moves them. `force` reclassifies everything
+    not set by hand."""
     ids = params.get("ids")
+    force = bool(params.get("force"))
     with ctx.session() as s:
         settings = load_settings(s)
         cats = s.exec(select(PoseCategory)).all()
@@ -273,6 +367,14 @@ def job_classify(ctx: JobContext, params: dict) -> dict:
         stmt = select(Photo).where(Photo.pose_source != "manual", Photo.landmarks_status.in_(("ok", "none")))
         if ids:
             stmt = stmt.where(Photo.id.in_(ids))
+        elif not force:
+            stmt = stmt.where(
+                (Photo.pose_source == "none")
+                | (Photo.pose_category_id.is_(None))
+                | (Photo.pose_confidence.is_(None))
+                | (Photo.pose_needs_review == True)  # noqa: E712
+            )
+        new = sum(1 for p in s.exec(stmt).all() if p.pose_source == "none" or p.pose_confidence is None)
         photos = s.exec(stmt.order_by(Photo.id)).all()
         # features first (labels need them for kNN)
         for p in s.exec(select(Photo).where(Photo.landmarks_status == "ok")).all():
@@ -297,10 +399,10 @@ def job_classify(ctx: JobContext, params: dict) -> dict:
                     s.add(a)
                 moved += 1
         s.commit()
-        model = build_knn(s, settings)
+        model = build_matcher(s, settings)
         total = len(photos)
         s.commit()
-        ctx.progress(0, total, f"Classifying with {'kNN' if model else 'rules'}")
+        ctx.progress(0, total, f"Classifying with {'your examples' if model else 'built-in rules'}")
         changed = 0
         review = 0
         for i, p in enumerate(photos, 1):
@@ -308,7 +410,8 @@ def job_classify(ctx: JobContext, params: dict) -> dict:
             vec = ensure_features(s, p) if p.landmarks_status == "ok" else None
             if model is not None and vec is not None:
                 cid, conf = model.predict(vec)
-                pred = Prediction(cid, round(conf, 4), "knn")
+                cid = refine_arm(key_of.get(cid), vec, cats_by_key) or cid
+                pred = Prediction(cid, conf, "knn")  # "knn" = matched to your examples
             else:
                 pred = predict_rules(vec, cats_by_key)
             if pred.category_id != p.pose_category_id:
@@ -332,10 +435,16 @@ def job_classify(ctx: JobContext, params: dict) -> dict:
                 s.commit()  # never report progress while holding the write lock
                 ctx.progress(i, total)
         s.commit()
-    method = "kNN" if model else "rules"
+    method = "your examples" if model else "built-in rules"
     _queue_abs_check()
+    if not total:
+        msg = "Nothing new to classify (use Settings → Reclassify all to redo every photo)"
+    elif ids or force:
+        msg = f"Classified {total} photos with {method}: {changed} changed, {review} need review"
+    else:
+        msg = f"Classified {new} new and re-checked {total - new} borderline photos with {method}: {changed} changed, {review} need review"
     return {
-        "message": f"Classified {total} photos with {method}: {changed} changed, {review} need review"
+        "message": msg
         + (f"; {moved} hand-assigned photos moved to their correct side" if moved else ""),
         "classified": total,
         "changed": changed,

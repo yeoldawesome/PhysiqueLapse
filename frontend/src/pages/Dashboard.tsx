@@ -23,7 +23,7 @@ export default function Dashboard() {
           <Bone size={14} /> Extract landmarks
           {c.landmarks_pending > 0 && <span className="badge bg-accent-2/20 text-accent">{c.landmarks_pending}</span>}
         </button>
-        <button className="btn" onClick={() => run.mutate({ path: "/poses/classify" })} title="classify poses for photos without a manual assignment">
+        <button className="btn" onClick={() => run.mutate({ path: "/poses/classify" })} title="classify new photos and re-check borderline ones (Settings has Reclassify all)">
           <Tags size={14} /> Classify poses
         </button>
         <button className="btn" onClick={() => run.mutate({ path: "/poses/align-all" })} title="align every category against its reference">

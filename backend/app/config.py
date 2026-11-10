@@ -17,6 +17,7 @@ FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 DATA_DIR = Path(os.environ.get("DATA_DIR") or (PROJECT_ROOT / "data")).resolve()
 ORIGINALS_DIR = DATA_DIR / "originals"
 DERIVED_DIR = DATA_DIR / "derived"
+EXAMPLES_DIR = DATA_DIR / "examples"  # uploaded pose examples (not library photos)
 THUMBS_DIR = DERIVED_DIR / "thumbs"
 PREVIEWS_DIR = DERIVED_DIR / "previews"
 LANDMARKS_DIR = DERIVED_DIR / "landmarks"
@@ -65,6 +66,7 @@ def ensure_dirs() -> None:
         MODELS_DIR,
         TRASH_DIR,
         INCOMING_DIR,
+        EXAMPLES_DIR,
     ):
         d.mkdir(parents=True, exist_ok=True)
 

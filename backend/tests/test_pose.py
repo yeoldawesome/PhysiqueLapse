@@ -95,22 +95,28 @@ def test_flip_swaps_side_facing():
     assert F.facing_side(F.compute(PF.mirrored(PF.side_left()))) < -0.5
 
 
-def test_knn_vote_and_activation():
-    s = AppSettings(knn_min_labels=4, knn_min_categories=2, knn_k=3)
+def test_matcher_nearest_examples_and_activation():
+    s = AppSettings(knn_min_labels=4, knn_min_categories=2, knn_k=2)
     fdb, rel = F.compute(PF.front_double_bicep()), F.compute(PF.front_relaxed())
     rng = np.random.default_rng(0)
-    labels = [(1, list(np.array(fdb) + rng.normal(0, 0.01, len(fdb)))) for _ in range(3)]
-    assert not C.knn_active(labels, s)  # one category only
-    labels += [(3, list(np.array(rel) + rng.normal(0, 0.01, len(rel)))) for _ in range(3)]
-    assert C.knn_active(labels, s)
-    model = C.KNN(np.array([v for _, v in labels]), np.array([c for c, _ in labels]), s.knn_k)
+    ex = [C.Example(1, list(np.array(fdb) + rng.normal(0, 0.01, len(fdb))), "upload", i) for i in range(3)]
+    assert not C.matcher_active(ex, s)  # one category only
+    ex += [C.Example(3, list(np.array(rel) + rng.normal(0, 0.01, len(rel))), "upload", 10 + i) for i in range(3)]
+    assert C.matcher_active(ex, s)
+    model = C.PoseMatcher(ex, s.knn_k, other=6)
     cid, conf = model.predict(fdb)
     assert cid == 1 and conf > 0.9
     cid, conf = model.predict(rel)
     assert cid == 3 and conf > 0.9
-
-
-# ----------------------------------------------------------------------------- jobs (fake backend)
+    # a pose far from every example lands in Other
+    far = list(np.array(fdb) + 1000.0)
+    assert model.predict(far)[0] == 6
+    # a mirrored example teaches the sibling pose: right-side examples alone find side_left
+    left = F.compute(PF.side_left())
+    right = F.mirror(left)
+    ex2 = [C.Example(5, right, "upload", 1), C.Example(5, right, "upload", 2)]
+    ex2 += [C.Example(4, F.mirror(e.vector), "mirror", e.ref_id) for e in ex2]
+    assert C.PoseMatcher(ex2, 1).predict(left)[0] == 4
 
 
 class FakeBackend:
@@ -207,6 +213,42 @@ def test_extract_and_classify_jobs(client, tmp_path):
         _wait(client, client.post("/api/poses/classify", json={}).json()["id"])
         p = client.get(f"/api/photos/{photos['60.png']['id']}").json()
         assert p["pose_category_id"] == cats["back_double_bicep"] and p["pose_source"] == "manual"
+
+        # a plain classify leaves confident photos alone; "force" (Reclassify all) redoes them
+        j = _wait(client, client.post("/api/poses/classify", json={}).json()["id"])
+        assert j["result"]["classified"] == 0 and "Nothing new" in j["result"]["message"]
+        j = _wait(client, client.post("/api/poses/classify", json={"force": True}).json()["id"])
+        assert j["result"]["classified"] == 1  # 110.png: the only photo not set by hand
+        # the hand-set photos are the examples, listed in Settings
+        ex = client.get("/api/poses/examples").json()
+        assert {e["id"] for e in ex if e["kind"] == "photo"} == {photos[n]["id"] for n in ("10.png", "60.png", "160.png")}
+
+        # uploaded examples: an image of the lat-spread fixture for Front Lat Spread; a new
+        # library photo with that pose then matches it
+        import io
+
+        buf = io.BytesIO()
+        _tagged_image(210).save(buf, "PNG")
+        fixtures[210] = PF.front_lat_spread()
+        r = client.post(f"/api/poses/{cats['front_lat_spread']}/examples", files=[("files", ("lat.png", buf.getvalue(), "image/png"))]).json()
+        assert r["added"] and not r["rejected"], r
+        eid = r["added"][0]
+        ex = client.get("/api/poses/examples").json()
+        up = [e for e in ex if e["kind"] == "upload"]
+        assert len(up) == 1 and up[0]["pose_category_id"] == cats["front_lat_spread"]
+        assert client.get(f"/api/poses/examples/{eid}/thumb").status_code == 200
+        buf = io.BytesIO()
+        _tagged_image(160).save(buf, "PNG")  # no person
+        r = client.post(f"/api/poses/{cats['front_lat_spread']}/examples", files=[("files", ("nobody.png", buf.getvalue(), "image/png"))]).json()
+        assert not r["added"] and r["rejected"][0]["file"] == "nobody.png"
+        save_image(root / "210.png", _tagged_image(210))
+        _wait(client, client.post("/api/imports/folder", json={"path": str(root)}).json()["job"]["id"])
+        _wait(client, client.post("/api/landmarks/extract").json()["id"])
+        _wait(client, client.post("/api/poses/classify", json={}).json()["id"])
+        photos = {p["original_filename"]: p for p in client.get("/api/photos").json()["items"]}
+        assert photos["210.png"]["pose_category_id"] == cats["front_lat_spread"] and photos["210.png"]["pose_source"] == "knn"
+        assert client.delete(f"/api/poses/examples/{eid}").json()["ok"]
+        assert client.get(f"/api/poses/examples/{eid}/thumb").status_code == 404
     finally:
         set_backend_for_tests(None, key=None)
 

@@ -2,6 +2,17 @@
 
 Newest first. Each entry says what was done, what was verified, and what is next, so a new session can resume.
 
+## 2026-11-10 — Example-based pose matching, uploads
+- Classifier replaced: a photo goes to the pose whose examples its joints and arm angles are closest to (`PoseMatcher`, weighted pose distance: angles /30°, arm positions /0.3 torso lengths, facing /0.4; mean of the 2 nearest examples per pose; confidence d2/(d1+d2); further than 4.0 from every pose → Other). Left/right pairs share examples, mirrored. Leave-one-out on the 112 hand labels: 82 right vs 79 for the old kNN.
+- Examples now come from two places: hand-set library photos (as before) and images uploaded per pose on Settings → Pose examples (`pose_examples` table, files in data/examples/, landmarks run on upload, "no person found" rejected). `POST /poses/{id}/examples`, `DELETE /poses/examples/{id}`, thumb/image routes; deleting a category drops its uploads.
+- Reclassify all run on the real photos: 1017 photos, 186 changed, 451 flagged for review (the review count is high because several of the user's examples overlap, e.g. all Front Relaxed examples are phone-in-hand selfies). By eye: Front Double Bicep now only real double biceps (17), Side Arm Down Flex - Right clean (13). 134 tests pass.
+
+## 2026-11-10 — Pose examples, incremental classify
+- Classify poses now only handles new photos (never classified, flipped, or from a deleted category) and borderline ones (needs review); confident automatic poses stay. Settings → "Reclassify all" redoes every photo not set by hand (`force`).
+- Settings → "Pose examples": every hand-set photo per pose (the kNN's training set), with "needs N more" below 3, and examples the other examples place in another pose flagged orange (leave-one-out); hover → remove (back to automatic). `GET /poses/examples`.
+- Side mirror selfies: arm down vs. arm bent is decided by the shown arm's elbow angle (< 132° = Arm 90). Leave-one-out on the 111 examples: no change (38 vs 39 of 50 side selfies, the rule disagrees with some examples); on the 27 unlabelled photos where it changes the answer, by eye about 22 are better (arms hanging down that were in Arm 90).
+- Found while checking: the examples are inconsistent (e.g. all Front Relaxed examples are mirror selfies, Front Lat Spread has mirror-selfie flexes), which is the main cause of mixed groups. Tried and rejected (no gain on leave-one-out): CLIP image kNN, CLIP+pose mix, rule blend, class-balanced kNN, mirror augmentation, self-training. 134 tests pass.
+
 ## 2026-11-10 — Face group
 - New Face group across all poses (schema v7; DB backed up to the session scratchpad as physiquelapse.before-v7.db): face close-ups aligned by eye-midpoint and mouth-midpoint (rigid move, 720×720), listed with the poses on the Dashboard, Viewer and Library; export with `group: "face"`; drawer "Face visible" switch with reset; runs after Classify poses.
 - Visible check: CLIP on the face centre and on the mouth/chin of the aligned close-up, lower score wins, threshold 0.85 (phone in front of the face is the main reason to leave a photo out). Prototype on the real photos: alignment consistent by eye; covered faces mostly removed, some faces with the phone over the mouth still pass. 134 tests pass.

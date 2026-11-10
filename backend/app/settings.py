@@ -59,8 +59,8 @@ class AppSettings(BaseModel):
     landmark_input_long_side: int = 1280
     flip_tta: bool = False
     review_confidence: float = 0.6
-    knn_k: int = 5
-    knn_min_labels: int = 8
+    knn_k: int = 2  # examples averaged per pose when matching
+    knn_min_labels: int = 2  # examples needed before matching replaces the rules
     knn_min_categories: int = 2
     # physique filter (snapchat import)
     filter_accept: float = 0.70

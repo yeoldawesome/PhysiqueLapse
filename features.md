@@ -11,3 +11,5 @@ need a setting that filters out photos with sleves, so when im going through mir
 when going though the post that need review page i want like at the top examples of each one or somthing, also when going though review i want like an accept button so that if its already catigoried i can cick accept and it adds it, right now i have to select a diffrent pose then put it back to what it is.
 
 i would like to add a face catigorie where it aligns face from every photo, it should not over ride any other catigory like i just want a section to view all the faces aligned in date order
+
+if there is just one arm up it is not a fron lat spread its kust a front left or right arm flex, i would perfer joint matching for pose clasification over some knn nurel net work, but having both might be usefull also if i have examples in the pose set and i confim they are right, they should no longer be orange, just when it comes to the like pose examples like i know they are right.also if ita over 50 its probably right
