@@ -1,0 +1,19 @@
+# runtime data (originals, derived images, models, database)
+data/
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+# node
+node_modules/
+frontend/dist/
+# personal sample photos, never committed
+samples/
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

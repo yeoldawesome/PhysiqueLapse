@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "physiquelapse"
+version = "0.1.0"
+description = "Local-only physique progress tracker: upload, date, pose, align, time-lapse."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30",
+  "python-multipart>=0.0.9",
+  "sqlmodel>=0.0.22",
+  "pydantic>=2.7",
+  "pillow>=11.1",
+  "pillow-heif>=0.20",
+  "imagehash>=4.3",
+  # MediaPipe is pinned to 0.10.21 on purpose: every newer release (0.10.30+, 1.x)
+  # embeds a Clearcut logging client that uploads usage metrics to
+  # play.googleapis.com/log with no opt-out API. 0.10.21 was verified clean by
+  # searching its binaries. Its pins force numpy<2 and protobuf<5 below.
+  "mediapipe==0.10.21",
+  "numpy>=1.26,<2",
+  "protobuf>=4.25.3,<5",
+  "opencv-contrib-python>=4.10,<5",
+  "torch>=2.6",
+  "torchvision",
+  "open_clip_torch>=2.26",
+  "imageio-ffmpeg>=0.5",
+  "tzdata",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]
+rembg = ["rembg>=2.0.60", "onnxruntime>=1.18"]
+
+[tool.setuptools.packages.find]
+include = ["app*", "scripts*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["models: needs downloaded model files (deselect with -m 'not models')"]
+addopts = "-m 'not models' -q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008", "E501"]

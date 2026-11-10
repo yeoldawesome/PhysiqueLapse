@@ -1,0 +1,441 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronFirst, ChevronLast, Columns2, Crosshair, Film, Layers, Pause, Pencil, Play, Square, StepBack, StepForward } from "lucide-react";
+import { get } from "../api/client";
+import { useCategories, useRunJob, useSettings } from "../api/queries";
+import type { Metric, MetricEntry, Sequence, SequenceFrame } from "../api/types";
+import { Empty, PageHeader, Spinner, Toggle } from "../components/ui";
+import MetricChart from "../components/MetricChart";
+import ExportDialog from "../components/ExportDialog";
+import { useShortcuts } from "../lib/keyboard";
+import { fmtDate, toDateValue } from "../lib/format";
+
+type Mode = "single" | "onion" | "split";
+
+function frameSrc(f: SequenceFrame): string {
+  return f.aligned_url ?? f.preview_url;
+}
+
+/** Keeps decoded images around so stepping is instant; loads outward from the current frame. */
+function usePreload(frames: SequenceFrame[], index: number) {
+  const cache = useRef<Map<string, HTMLImageElement>>(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    const order: number[] = [];
+    for (let d = 0; d < frames.length; d++) {
+      if (index + d < frames.length) order.push(index + d);
+      if (d > 0 && index - d >= 0) order.push(index - d);
+    }
+    let i = 0;
+    const next = () => {
+      if (cancelled || i >= order.length) return;
+      const batch = order.slice(i, i + 6);
+      i += 6;
+      Promise.all(
+        batch.map((k) => {
+          const src = frameSrc(frames[k]);
+          if (cache.current.has(src)) return Promise.resolve();
+          const img = new Image();
+          img.decoding = "async";
+          img.src = src;
+          cache.current.set(src, img);
+          return img.decode().catch(() => undefined);
+        }),
+      ).then(next);
+    };
+    next();
+    return () => {
+      cancelled = true;
+    };
+  }, [frames, index]);
+}
+
+function StatsStrip({ frame }: { frame: SequenceFrame | undefined }) {
+  if (!frame) return null;
+  if (frame.stats.length === 0) return <div className="text-xs text-muted">No measurements within the stats window of this date.</div>;
+  return (
+    <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+      {frame.stats.map((s) => (
+        <div key={s.metric_id} className="flex items-baseline gap-1.5">
+          <span className="text-muted">{s.name}</span>
+          <span className="font-semibold tabular-nums">
+            {s.value!.toFixed(s.decimals)} {s.unit}
+          </span>
+          {s.offset_days !== 0 && <span className="text-xs text-muted">({s.offset_label})</span>}
+          {s.change_since_first != null && s.change_since_first !== 0 && (
+            <span className="text-xs tabular-nums text-muted">
+              {s.change_since_first > 0 ? "+" : ""}
+              {s.change_since_first.toFixed(s.decimals)} since start
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function Viewer() {
+  const [params, setParams] = useSearchParams();
+  const { data: cats = [] } = useCategories();
+  const { data: settings } = useSettings();
+  const run = useRunJob();
+  const poseId = Number(params.get("pose_id")) || cats.find((c) => c.photo_count > 0 && c.rule_key !== "other")?.id || cats[0]?.id;
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+  const seq = useQuery({
+    queryKey: ["sequence", poseId, from, to],
+    queryFn: () => get<Sequence>(`/poses/${poseId}/sequence`, { from, to }),
+    enabled: !!poseId,
+  });
+  const frames = useMemo(() => seq.data?.frames ?? [], [seq.data]);
+  const [index, setIndex] = useState(0);
+  const [compare, setCompare] = useState(0);
+  const [mode, setMode] = useState<Mode>("single");
+  const [opacity, setOpacity] = useState(0.5);
+  const [split, setSplit] = useState(0.5);
+  const [playing, setPlaying] = useState(false);
+  const [fps, setFps] = useState(2);
+  const [fade, setFade] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [metricId, setMetricId] = useState<number | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (settings) {
+      setFps(settings.playback_fps);
+      setFade(settings.playback_crossfade);
+    }
+  }, [settings]);
+  useEffect(() => {
+    setIndex((i) => Math.min(i, Math.max(0, frames.length - 1)));
+    setCompare((c) => Math.min(c, Math.max(0, frames.length - 1)));
+  }, [frames.length]);
+  useEffect(() => {
+    // new pose: start at the latest photo, compare with the first
+    setIndex(Math.max(0, frames.length - 1));
+    setCompare(0);
+  }, [poseId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  usePreload(frames, index);
+
+  // playback
+  useEffect(() => {
+    if (!playing || frames.length < 2) return;
+    const t = window.setInterval(() => setIndex((i) => (i + 1) % frames.length), 1000 / fps);
+    return () => window.clearInterval(t);
+  }, [playing, fps, frames.length]);
+
+  const step = useCallback((d: number) => setIndex((i) => Math.max(0, Math.min(frames.length - 1, i + d))), [frames.length]);
+  useShortcuts(
+    useMemo(
+      () => ({
+        ArrowLeft: (e: KeyboardEvent) => {
+          e.preventDefault();
+          setPlaying(false);
+          step(e.shiftKey ? -10 : -1);
+        },
+        ArrowRight: (e: KeyboardEvent) => {
+          e.preventDefault();
+          setPlaying(false);
+          step(e.shiftKey ? 10 : 1);
+        },
+        " ": (e: KeyboardEvent) => {
+          e.preventDefault();
+          setPlaying((p) => !p);
+        },
+        Home: () => setIndex(0),
+        End: () => setIndex(Math.max(0, frames.length - 1)),
+        "[": () => setCompare(index),
+        "]": () => setCompare(index),
+        o: () => setMode((m) => (m === "onion" ? "single" : "onion")),
+        s: () => setMode((m) => (m === "split" ? "single" : "split")),
+      }),
+      [step, frames.length, index],
+    ),
+  );
+
+  const metrics = useQuery({ queryKey: ["metrics"], queryFn: () => get<Metric[]>("/metrics") });
+  const activeMetric = metrics.data?.find((m) => m.id === metricId) ?? metrics.data?.find((m) => (m.entry_count ?? 0) > 0) ?? null;
+  const entries = useQuery({
+    queryKey: ["metrics", "entries", activeMetric?.id],
+    queryFn: () => get<MetricEntry[]>("/metrics/entries", { metric_id: activeMetric!.id }),
+    enabled: !!activeMetric,
+  });
+
+  const cur = frames[index];
+  const cmp = frames[compare];
+  const set = (k: string, v: string) => {
+    const next = new URLSearchParams(params);
+    if (v) next.set(k, v);
+    else next.delete(k);
+    setParams(next, { replace: true });
+  };
+
+  // split-view divider drag
+  const dragSplit = (e: React.PointerEvent) => {
+    const el = stageRef.current;
+    if (!el) return;
+    (e.target as Element).setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      const r = el.getBoundingClientRect();
+      setSplit(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  const cw = seq.data?.canvas_w ?? 1080;
+  const ch = seq.data?.canvas_h ?? 1350;
+  const fadeMs = fade && playing ? Math.min(400, 800 / fps) : 0;
+
+  return (
+    <div className="flex h-full flex-col">
+      <PageHeader
+        title="Viewer"
+        subtitle={
+          seq.data
+            ? `${frames.length} photos${seq.data.unaligned ? ` · ${seq.data.unaligned} not aligned (showing unaligned preview)` : ""}${
+                seq.data.without_date ? ` · ${seq.data.without_date} without a date are left out` : ""
+              }`
+            : ""
+        }
+      >
+        <select className="select" value={poseId ?? ""} onChange={(e) => set("pose_id", e.target.value)}>
+          {cats.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} ({c.photo_count})
+            </option>
+          ))}
+        </select>
+        <input type="date" className="input" value={from} onChange={(e) => set("from", e.target.value)} title="from" />
+        <input type="date" className="input" value={to} onChange={(e) => set("to", e.target.value)} title="to" />
+        {seq.data && seq.data.unaligned > 0 && (
+          <button className="btn" onClick={() => run.mutate({ path: `/poses/${poseId}/align` })}>
+            <Crosshair size={14} /> Align
+          </button>
+        )}
+        <button className="btn btn-primary" disabled={frames.length === 0} onClick={() => setExportOpen(true)}>
+          <Film size={14} /> Export
+        </button>
+      </PageHeader>
+
+      {seq.isLoading ? (
+        <div className="flex items-center gap-2 p-6 text-sm text-muted">
+          <Spinner /> loading…
+        </div>
+      ) : frames.length === 0 ? (
+        <div className="p-6">
+          <Empty title="No dated photos in this pose yet">Assign photos to this pose in the Library, give them dates, and run alignment.</Empty>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="checker flex min-h-0 flex-1 items-center justify-center p-3">
+              <div
+                ref={stageRef}
+                className="relative h-full max-h-full overflow-hidden bg-[#18181b] shadow-2xl"
+                style={{ aspectRatio: `${cw} / ${ch}` }}
+              >
+                {/* base layer: the current frame; previous frame fades out underneath while playing */}
+                {frames.map((f, i) => {
+                  const visible = i === index;
+                  if (!visible && !(fadeMs > 0 && Math.abs(i - index) <= 1)) return null;
+                  return (
+                    <img
+                      key={f.id}
+                      src={frameSrc(f)}
+                      alt=""
+                      draggable={false}
+                      className="absolute inset-0 h-full w-full object-contain"
+                      style={{
+                        opacity: visible ? 1 : 0,
+                        transition: fadeMs ? `opacity ${fadeMs}ms linear` : undefined,
+                        transform: !f.aligned_url && f.flip_horizontal ? "scaleX(-1)" : undefined,
+                      }}
+                    />
+                  );
+                })}
+                {mode === "onion" && cmp && (
+                  <img src={frameSrc(cmp)} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-contain" style={{ opacity }} draggable={false} />
+                )}
+                {mode === "split" && cmp && (
+                  <>
+                    <img
+                      src={frameSrc(cmp)}
+                      alt=""
+                      draggable={false}
+                      className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+                      style={{ clipPath: `inset(0 ${100 - split * 100}% 0 0)` }}
+                    />
+                    <div className="absolute inset-y-0 w-1 -translate-x-1/2 cursor-ew-resize bg-white/80" style={{ left: `${split * 100}%` }} onPointerDown={dragSplit} />
+                    <div className="absolute left-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-xs">{fmtDate(cmp.taken_at)}</div>
+                    <div className="absolute right-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-xs">{fmtDate(cur?.taken_at)}</div>
+                  </>
+                )}
+                {cur && Object.keys(cur.flags).some((k) => cur.flags[k]) && (
+                  <div className="absolute bottom-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-warn">
+                    {Object.keys(cur.flags)
+                      .filter((k) => cur.flags[k])
+                      .map((k) => k.replace(/_/g, " "))
+                      .join(" · ")}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* transport */}
+            <div className="border-t border-border bg-panel px-4 py-2">
+              <div className="flex items-center gap-2">
+                <button className="btn btn-sm" onClick={() => setIndex(0)} title="first (Home)">
+                  <ChevronFirst size={14} />
+                </button>
+                <button className="btn btn-sm" onClick={() => step(-1)} title="previous (←)">
+                  <StepBack size={14} />
+                </button>
+                <button className="btn btn-sm btn-primary w-16 justify-center" onClick={() => setPlaying((p) => !p)} title="play / pause (Space)">
+                  {playing ? <Pause size={14} /> : <Play size={14} />}
+                </button>
+                <button className="btn btn-sm" onClick={() => step(1)} title="next (→)">
+                  <StepForward size={14} />
+                </button>
+                <button className="btn btn-sm" onClick={() => setIndex(frames.length - 1)} title="last (End)">
+                  <ChevronLast size={14} />
+                </button>
+                <input
+                  type="range"
+                  className="mx-2 flex-1"
+                  min={0}
+                  max={frames.length - 1}
+                  value={index}
+                  onChange={(e) => {
+                    setPlaying(false);
+                    setIndex(Number(e.target.value));
+                  }}
+                />
+                <div className="w-64 shrink-0 text-right text-sm tabular-nums">
+                  <span className="font-medium">{fmtDate(cur?.taken_at)}</span>
+                  <span className="text-muted"> · day {cur?.days_since_start ?? "–"} · {index + 1}/{frames.length}</span>
+                </div>
+              </div>
+              <div className="mt-2">
+                <StatsStrip frame={cur} />
+              </div>
+            </div>
+          </div>
+
+          {/* side panel */}
+          <aside className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-panel p-4 text-sm">
+            <div>
+              <div className="label mb-1.5">Mode</div>
+              <div className="flex gap-1">
+                {(
+                  [
+                    ["single", Square, "Single"],
+                    ["onion", Layers, "Onion (O)"],
+                    ["split", Columns2, "Split (S)"],
+                  ] as const
+                ).map(([m, Icon, label]) => (
+                  <button key={m} className={`btn btn-sm flex-1 justify-center ${mode === m ? "btn-primary" : ""}`} onClick={() => setMode(m)}>
+                    <Icon size={13} /> {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {mode !== "single" && (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="label">Compare with</span>
+                  <button className="btn btn-sm ml-auto" onClick={() => setCompare(index)} title="[ or ]">
+                    use current
+                  </button>
+                </div>
+                <select className="select" value={compare} onChange={(e) => setCompare(Number(e.target.value))}>
+                  {frames.map((f, i) => (
+                    <option key={f.id} value={i}>
+                      {i + 1}. {fmtDate(f.taken_at)} (day {f.days_since_start})
+                    </option>
+                  ))}
+                </select>
+                {mode === "onion" && (
+                  <label className="flex flex-col gap-1">
+                    <span className="label">Overlay opacity {Math.round(opacity * 100)}%</span>
+                    <input type="range" min={0} max={1} step={0.05} value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} />
+                  </label>
+                )}
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <span className="label">Playback</span>
+              <label className="flex items-center gap-2">
+                <span className="w-20 text-muted">{fps} fps</span>
+                <input type="range" min={0.5} max={10} step={0.5} value={fps} onChange={(e) => setFps(Number(e.target.value))} className="flex-1" />
+              </label>
+              <Toggle checked={fade} onChange={setFade} label="Crossfade while playing" />
+            </div>
+            {cur && (
+              <div className="flex gap-1.5">
+                <Link to={`/editor/${cur.id}`} className="btn btn-sm">
+                  <Pencil size={13} /> Edit alignment
+                </Link>
+              </div>
+            )}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="label">Measurements</span>
+                {(metrics.data?.length ?? 0) > 1 && (
+                  <select className="select ml-auto py-0.5 text-xs" value={activeMetric?.id ?? ""} onChange={(e) => setMetricId(Number(e.target.value))}>
+                    {metrics.data!.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              {activeMetric && (entries.data?.length ?? 0) > 0 ? (
+                <MetricChart
+                  title={`${activeMetric.name} (${activeMetric.unit})`}
+                  points={entries.data!.map((e) => ({ date: e.date, value: e.value }))}
+                  unit={activeMetric.unit}
+                  decimals={activeMetric.decimals}
+                  markerDate={cur?.taken_at ? toDateValue(cur.taken_at) : null}
+                  height={150}
+                  onPick={(d) => {
+                    // jump to the photo closest to the clicked date
+                    const t = new Date(d).getTime();
+                    let best = 0;
+                    frames.forEach((f, i) => {
+                      if (f.taken_at && Math.abs(new Date(f.taken_at).getTime() - t) < Math.abs(new Date(frames[best].taken_at!).getTime() - t)) best = i;
+                    });
+                    setPlaying(false);
+                    setIndex(best);
+                  }}
+                />
+              ) : (
+                <div className="text-xs text-muted">
+                  No measurements yet. Add them on the{" "}
+                  <Link to="/stats" className="underline">
+                    Stats
+                  </Link>{" "}
+                  page.
+                </div>
+              )}
+            </div>
+            <div className="mt-auto text-[11px] leading-relaxed text-muted">
+              <span className="kbd">←</span> <span className="kbd">→</span> step (Shift ×10) · <span className="kbd">Space</span> play · <span className="kbd">Home</span>/
+              <span className="kbd">End</span> · <span className="kbd">[</span> set comparison · <span className="kbd">O</span> onion · <span className="kbd">S</span> split
+            </div>
+          </aside>
+        </div>
+      )}
+      {poseId && (
+        <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} poseId={poseId} from={from} to={to} defaultFps={fps} />
+      )}
+    </div>
+  );
+}
