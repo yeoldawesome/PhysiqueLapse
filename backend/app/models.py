@@ -61,6 +61,21 @@ class Photo(SQLModel, table=True):
     landmarks_quality: float | None = None
     landmarks_path: str | None = None
     excluded: bool = False
+    # Abs group (services/abs_view.py): independent of the pose category
+    abs_visible: bool | None = Field(default=None, index=True)
+    abs_score: float | None = None
+    abs_source: str = "none"  # auto|manual|none
+    abs_version: int | None = None
+    # Sleeves covering the arms (services/sleeves.py): Viewer "Hide sleeves"
+    sleeves: bool | None = Field(default=None, index=True)
+    sleeves_score: float | None = None  # probability of bare arms
+    sleeves_source: str = "none"  # auto|manual|none
+    sleeves_version: int | None = None
+    # Face group (services/face_view.py): independent of the pose category
+    face_visible: bool | None = Field(default=None, index=True)
+    face_score: float | None = None
+    face_source: str = "none"  # auto|manual|none
+    face_version: int | None = None
     notes: str | None = None
     created_at: NaiveDatetime = Field(default_factory=now)
     updated_at: NaiveDatetime = Field(default_factory=now)

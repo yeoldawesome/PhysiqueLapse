@@ -19,14 +19,18 @@ export default function ExportDialog({
   to,
   defaultFps,
   maxPoseDiff,
+  group,
+  hideSleeves,
 }: {
   open: boolean;
   onClose: () => void;
-  poseId: number;
+  poseId: number | null;
+  group?: "abs" | "face" | null;
   from?: string;
   to?: string;
   defaultFps: number;
   maxPoseDiff?: number | null;
+  hideSleeves?: boolean;
 }) {
   const qc = useQueryClient();
   const metrics = useQuery({ queryKey: ["metrics"], queryFn: () => get<Metric[]>("/metrics") });
@@ -45,6 +49,7 @@ export default function ExportDialog({
     try {
       await post<{ job: Job }>("/exports", {
         pose_id: poseId,
+        group: group ?? null,
         from: from || null,
         to: to || null,
         fps,
@@ -53,6 +58,7 @@ export default function ExportDialog({
         crossfade,
         caption: { date: capDate, days: capDays, metrics: capMetrics },
         max_pose_diff_pct: maxPoseDiff ?? null,
+        hide_sleeves: !!hideSleeves,
       });
       toast.info("Export started");
       qc.invalidateQueries({ queryKey: ["jobs"] });
@@ -104,7 +110,7 @@ export default function ExportDialog({
       </div>
       <div className="mt-2 text-xs text-muted">
         Range: {from || "first photo"} → {to || "last photo"}. Only aligned photos are included
-        {maxPoseDiff != null ? `, and only those whose pose is within ${maxPoseDiff}% of the reference (the Viewer's pose-match setting)` : ""}. Rendering runs in the background.
+        {maxPoseDiff != null ? `, and only those whose pose is within ${maxPoseDiff}% of the reference (the Viewer's pose-match setting)` : ""}{hideSleeves ? ", leaving out photos with sleeves" : ""}. Rendering runs in the background.
       </div>
       <div className="mt-3 flex justify-end">
         <button className="btn btn-primary" onClick={start} disabled={busy || fps <= 0}>

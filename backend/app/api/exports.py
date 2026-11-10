@@ -26,7 +26,8 @@ class CaptionIn(BaseModel):
 
 
 class ExportIn(BaseModel):
-    pose_id: int
+    pose_id: int | None = None
+    group: str | None = Field(None, pattern="^(abs|face)$")  # close-up groups instead of a pose category
     from_: date | None = Field(None, alias="from")
     to: date | None = None
     fps: float = Field(2.0, gt=0, le=30)
@@ -34,6 +35,7 @@ class ExportIn(BaseModel):
     width: int | None = Field(None, ge=128, le=4096)
     crossfade: float = Field(0.0, ge=0, le=5)
     max_pose_diff_pct: float | None = Field(None, gt=0, le=200)
+    hide_sleeves: bool = False  # leave out photos whose arms are covered by clothing
     caption: CaptionIn = Field(default_factory=CaptionIn)
 
     model_config = {"populate_by_name": True}
@@ -41,7 +43,7 @@ class ExportIn(BaseModel):
 
 @router.post("")
 def create(body: ExportIn, s: Session = Depends(get_session)) -> dict[str, Any]:
-    if s.get(PoseCategory, body.pose_id) is None:
+    if body.group is None and (body.pose_id is None or s.get(PoseCategory, body.pose_id) is None):
         raise HTTPException(404, "pose category not found")
     params = body.model_dump(by_alias=True, mode="json")
     params["pose_id"] = body.pose_id

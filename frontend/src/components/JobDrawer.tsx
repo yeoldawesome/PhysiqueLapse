@@ -45,15 +45,27 @@ export default function JobDrawer() {
     }
     prev.current = new Map(jobs.map((j) => [j.id, j.status]));
     if (finished) {
-      for (const key of [["photos"], ["photo"], ["dashboard"], ["imports"], ["categories"], ["sequence"], ["exports"], ["review"], ["eval"], ["system"], ["metrics"]]) {
+      for (const key of [["photos"], ["photo"], ["dashboard"], ["imports"], ["categories"], ["sequence"], ["exports"], ["review"], ["eval"], ["system"], ["metrics"], ["measure-summary"], ["measure-series"], ["snap-zip"]]) {
         qc.invalidateQueries({ queryKey: key });
       }
     }
   }, [jobs, qc]);
 
+  // finished jobs linger for 15 s and then get out of the way (failed ones stay until dismissed)
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 3000);
+    return () => window.clearInterval(t);
+  }, []);
+
   if (!jobs) return null;
   const active = jobs.filter((j) => j.status === "queued" || j.status === "running");
-  const recent = jobs.filter((j) => j.status !== "queued" && j.status !== "running" && j.id > dismissedBefore).slice(0, 4);
+  const fresh = (j: Job) => {
+    if (j.status === "failed") return true;
+    const t = j.finished_at ? new Date(j.finished_at).getTime() : 0;
+    return now - t < 15_000;
+  };
+  const recent = jobs.filter((j) => j.status !== "queued" && j.status !== "running" && j.id > dismissedBefore && fresh(j)).slice(0, 4);
   const shown = [...active, ...recent];
   if (shown.length === 0) return null;
 

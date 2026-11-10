@@ -68,6 +68,7 @@ def sequence(
                 "method": a.method if ok else None,
                 "stale": bool(a.stale) if ok else True,
                 "flip_horizontal": p.flip_horizontal,
+                "sleeves": p.sleeves,
                 "stats": st,
                 "measurements": meas.get(p.id, {}),
                 # how far this photo's shoulders/elbows/wrists land from the reference's, in % of torso length

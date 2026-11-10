@@ -14,7 +14,7 @@ from .models import Metric, PoseCategory, Setting
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 7
 
 _engine = None
 
@@ -91,6 +91,24 @@ _MIGRATIONS: dict[int, list[str]] = {
         "ALTER TABLE alignments ADD COLUMN joint_residual_px FLOAT",
         "UPDATE pose_categories SET align_method = 'joints' WHERE align_method IS NULL OR align_method = 'body'",
         "UPDATE alignments SET stale = 1",
+    ],
+    5: [
+        "ALTER TABLE photos ADD COLUMN abs_visible BOOLEAN",
+        "ALTER TABLE photos ADD COLUMN abs_score FLOAT",
+        "ALTER TABLE photos ADD COLUMN abs_source VARCHAR DEFAULT 'none'",
+        "ALTER TABLE photos ADD COLUMN abs_version INTEGER",
+    ],
+    6: [
+        "ALTER TABLE photos ADD COLUMN sleeves BOOLEAN",
+        "ALTER TABLE photos ADD COLUMN sleeves_score FLOAT",
+        "ALTER TABLE photos ADD COLUMN sleeves_source VARCHAR DEFAULT 'none'",
+        "ALTER TABLE photos ADD COLUMN sleeves_version INTEGER",
+    ],
+    7: [
+        "ALTER TABLE photos ADD COLUMN face_visible BOOLEAN",
+        "ALTER TABLE photos ADD COLUMN face_score FLOAT",
+        "ALTER TABLE photos ADD COLUMN face_source VARCHAR DEFAULT 'none'",
+        "ALTER TABLE photos ADD COLUMN face_version INTEGER",
     ],
 }
 

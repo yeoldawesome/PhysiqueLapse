@@ -186,6 +186,14 @@ def test_extract_and_classify_jobs(client, tmp_path):
         assert photos["160.png"]["pose_needs_review"]
         assert photos["10.png"]["pose_source"] == "rule"
 
+        # "accept" confirms the pose a photo already has: same category, set by hand, no review flag
+        r = client.post("/api/photos/bulk", json={"ids": [photos["160.png"]["id"], photos["10.png"]["id"]], "accept_pose": True}).json()
+        assert r["updated"] == 2
+        for name, key in (("160.png", "other"), ("10.png", "front_double_bicep")):
+            q = client.get(f"/api/photos/{photos[name]['id']}").json()
+            assert q["pose_category_id"] == cats[key] and q["pose_source"] == "manual" and not q["pose_needs_review"]
+        assert client.get("/api/photos", params={"needs_review": True}).json()["total"] == 0
+
         # flipping the side photo makes it a right-side pose on reclassify
         pid = photos["110.png"]["id"]
         client.patch(f"/api/photos/{pid}", json={"flip_horizontal": True})

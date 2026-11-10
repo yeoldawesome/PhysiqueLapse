@@ -12,6 +12,7 @@ function PhotoCardInner({
   isReference,
   onSelect,
   onOpen,
+  onAccept,
 }: {
   photo: Photo;
   category?: Category;
@@ -19,6 +20,7 @@ function PhotoCardInner({
   isReference?: boolean;
   onSelect: (id: number, mode: SelectMode) => void;
   onOpen: (id: number) => void;
+  onAccept?: (id: number, poseId: number) => void;
 }) {
   const lowDate = photo.taken_at_confidence === "low" || !photo.taken_at;
   const lmBad = photo.landmarks_status === "none" || photo.landmarks_status === "failed";
@@ -76,6 +78,11 @@ function PhotoCardInner({
             <FlipHorizontal2 size={12} />
           </span>
         )}
+        {photo.abs_visible && (
+          <span className="rounded bg-black/60 px-1 text-[10px] font-semibold leading-4 text-ok" title={`visible abs (${photo.abs_source === "manual" ? "set by you" : "detected"})`}>
+            abs
+          </span>
+        )}
         {photo.excluded && (
           <span className="rounded bg-black/60 p-0.5 text-muted" title="excluded from viewer">
             <EyeOff size={12} />
@@ -96,6 +103,19 @@ function PhotoCardInner({
           {fmtDate(photo.taken_at)}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-1">
+          {category && photo.pose_needs_review && onAccept && (
+            <button
+              className="rounded bg-ok/20 p-0.5 text-ok hover:bg-ok/40"
+              title={`accept "${category.name}"`}
+              aria-label="accept pose"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAccept(photo.id, category.id);
+              }}
+            >
+              <Check size={12} strokeWidth={3} />
+            </button>
+          )}
           {category && (
             <span
               className={`badge max-w-[90px] truncate ${photo.pose_needs_review ? "bg-warn/15 text-warn" : "bg-panel-2 text-muted"}`}

@@ -18,6 +18,7 @@ from ..jobs import job_to_dict, runner
 from ..models import Alignment, Photo, PoseCategory, PoseFeatures, PoseLabel, now
 from ..schemas import BulkPatch, PhotoPatch, alignment_out, photo_out
 from ..services import dates, images, ingest
+from ..settings import load_settings
 
 router = APIRouter(prefix="/photos", tags=["photos"])
 
@@ -72,6 +73,9 @@ def list_photos(
     no_date: bool | None = None,
     excluded: str = "all",
     landmarks: str | None = None,
+    abs: str | None = None,
+    sleeves: str | None = None,
+    face: str | None = None,
     q: str | None = None,
     sort: str = "taken_at_desc",
     page: int = 1,
@@ -109,6 +113,16 @@ def list_photos(
         conds.append(Photo.excluded == False)  # noqa: E712
     if landmarks:
         conds.append(Photo.landmarks_status == landmarks)
+    if abs == "visible":
+        conds.append(Photo.abs_visible == True)  # noqa: E712
+    elif abs == "hidden":
+        conds.append(Photo.abs_visible == False)  # noqa: E712
+    if face == "visible":
+        conds.append(Photo.face_visible == True)  # noqa: E712
+    if sleeves == "hide":  # photos whose arms are not covered (unchecked ones stay)
+        conds.append(or_(Photo.sleeves.is_(None), Photo.sleeves == False))  # noqa: E712
+    elif sleeves == "only":
+        conds.append(Photo.sleeves == True)  # noqa: E712
     if q:
         like = f"%{q.strip()}%"
         conds.append(or_(Photo.original_filename.ilike(like), Photo.notes.ilike(like)))
@@ -210,6 +224,42 @@ def apply_patch(s: Session, p: Photo, patch: PhotoPatch) -> None:
     if patch.excluded is not None:
         p.excluded = patch.excluded
         changed = True
+    if patch.abs_auto:
+        p.abs_source = "auto" if p.abs_score is not None else "none"
+        if p.abs_score is not None:
+            p.abs_visible = p.abs_score >= load_settings(s).abs_threshold
+        changed = True
+    elif patch.abs_visible is not None:
+        p.abs_visible, p.abs_source = patch.abs_visible, "manual"
+        changed = True
+    if patch.sleeves_auto:
+        p.sleeves_source = "auto" if p.sleeves_score is not None else "none"
+        p.sleeves = (p.sleeves_score < load_settings(s).sleeves_threshold) if p.sleeves_score is not None else None
+        changed = True
+    elif patch.sleeves is not None:
+        p.sleeves, p.sleeves_source = patch.sleeves, "manual"
+        changed = True
+    if patch.face_auto:
+        p.face_source = "auto" if p.face_score is not None else "none"
+        p.face_visible = (p.face_score >= load_settings(s).face_threshold) if p.face_score is not None else None
+        changed = True
+    elif patch.face_visible is not None:
+        p.face_visible, p.face_source = patch.face_visible, "manual"
+        changed = True
+    if changed and p.face_visible and (patch.face_visible or patch.face_auto or patch.flip_horizontal is not None):
+        from ..services.face_view import ensure_closeup as ensure_face
+
+        try:
+            ensure_face(s, p)
+        except Exception:  # the close-up is a convenience; the flag itself is saved regardless
+            pass
+    if changed and p.abs_visible and (patch.abs_visible or patch.abs_auto or patch.flip_horizontal is not None):
+        from ..services.abs_view import ensure_closeup
+
+        try:
+            ensure_closeup(s, p)
+        except Exception:  # the close-up is a convenience; the flag itself is saved regardless
+            pass
     if patch.notes is not None:
         p.notes = patch.notes or None
         changed = True
@@ -262,6 +312,11 @@ def bulk(body: BulkPatch, s: Session = Depends(get_session)) -> dict[str, Any]:
             continue
         if body.patch is not None:
             apply_patch(s, p, body.patch)
+        if body.accept_pose:
+            if p.pose_category_id is None:
+                skipped += 1
+            else:
+                apply_patch(s, p, PhotoPatch(pose_category_id=p.pose_category_id))
         if body.toggle_flip:
             apply_patch(s, p, PhotoPatch(flip_horizontal=not p.flip_horizontal))
         if body.date_shift_days:
@@ -342,6 +397,22 @@ def aligned(photo_id: int, s: Session = Depends(get_session)):
     if a is None or not a.output_path:
         raise HTTPException(404, "not aligned yet")
     return _file(config.abs_path(a.output_path), "image/jpeg", {"Cache-Control": "private, max-age=31536000"})
+
+
+@router.get("/{photo_id}/face")
+def face_closeup(photo_id: int, s: Session = Depends(get_session)):
+    from ..services.face_view import face_path
+
+    _get_photo(s, photo_id)
+    return _file(face_path(photo_id), "image/jpeg", {"Cache-Control": "private, max-age=31536000"})
+
+
+@router.get("/{photo_id}/abs")
+def abs_closeup(photo_id: int, s: Session = Depends(get_session)):
+    from ..services.abs_view import abs_path
+
+    _get_photo(s, photo_id)
+    return _file(abs_path(photo_id), "image/jpeg", {"Cache-Control": "private, max-age=31536000"})
 
 
 @router.get("/{photo_id}/landmarks")

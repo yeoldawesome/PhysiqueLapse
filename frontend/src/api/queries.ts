@@ -27,6 +27,9 @@ export type PhotoFilters = {
   no_date?: boolean;
   excluded?: "all" | "only" | "hide";
   landmarks?: string;
+  abs?: "visible" | "hidden";
+  sleeves?: "hide" | "only";
+  face?: "visible";
   q?: string;
   sort?: string;
   page?: number;

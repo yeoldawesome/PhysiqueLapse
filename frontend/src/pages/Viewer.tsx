@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronFirst, ChevronLast, Columns2, Crosshair, Film, Layers, Pause, Pencil, Play, Square, StepBack, StepForward } from "lucide-react";
-import { get } from "../api/client";
-import { useCategories, useRunJob, useSettings } from "../api/queries";
+import { ChevronFirst, ChevronLast, Columns2, Crosshair, Film, Layers, Shirt, Pause, Pencil, Play, Square, StepBack, StepForward } from "lucide-react";
+import { get, post } from "../api/client";
+import { useCategories, useDashboard, useRunJob, useSettings } from "../api/queries";
 import type { Metric, MetricEntry, Sequence, SequenceFrame } from "../api/types";
 import { Empty, PageHeader, Spinner, Toggle } from "../components/ui";
 import MetricChart from "../components/MetricChart";
@@ -79,15 +79,19 @@ function StatsStrip({ frame }: { frame: SequenceFrame | undefined }) {
 export default function Viewer() {
   const [params, setParams] = useSearchParams();
   const { data: cats = [] } = useCategories();
+  const { data: dash } = useDashboard();
   const { data: settings } = useSettings();
   const run = useRunJob();
-  const poseId = Number(params.get("pose_id")) || cats.find((c) => c.photo_count > 0 && c.rule_key !== "other")?.id || cats[0]?.id;
+  // close-up groups (attributes across every pose) instead of a pose category
+  const group = params.get("pose_id") === "abs" ? "abs" : params.get("pose_id") === "face" ? "face" : null;
+  const isAbs = group != null;
+  const poseId = isAbs ? undefined : Number(params.get("pose_id")) || cats.find((c) => c.photo_count > 0 && c.rule_key !== "other")?.id || cats[0]?.id;
   const from = params.get("from") ?? "";
   const to = params.get("to") ?? "";
   const seq = useQuery({
-    queryKey: ["sequence", poseId, from, to],
-    queryFn: () => get<Sequence>(`/poses/${poseId}/sequence`, { from, to }),
-    enabled: !!poseId,
+    queryKey: ["sequence", group ?? poseId, from, to],
+    queryFn: () => get<Sequence>(group === "abs" ? "/abs/sequence" : group === "face" ? "/faces/sequence" : `/poses/${poseId}/sequence`, { from, to }),
+    enabled: isAbs || !!poseId,
   });
   const [maxDiff, setMaxDiff] = useState<number | null>(() => {
     try {
@@ -105,10 +109,34 @@ export default function Viewer() {
       /* ignore */
     }
   }, [maxDiff]);
+  // "Hide sleeves": leave out photos where clothing covers the arms (remembered per browser)
+  const [hideSleeves, setHideSleeves] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("pl.hideSleeves") === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("pl.hideSleeves", hideSleeves ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [hideSleeves]);
   const allFrames = useMemo(() => seq.data?.frames ?? [], [seq.data]);
+  const sleeveCount = useMemo(() => allFrames.filter((f) => f.sleeves).length, [allFrames]);
+  const uncheckedSleeves = useMemo(() => allFrames.some((f) => f.sleeves == null), [allFrames]);
+  // photos not checked yet (e.g. right after an import): check them when the toggle is on
+  useEffect(() => {
+    if (hideSleeves && uncheckedSleeves) post("/sleeves/detect", {}).catch(() => undefined);
+  }, [hideSleeves, uncheckedSleeves]);
   const frames = useMemo(
-    () => (maxDiff == null ? allFrames : allFrames.filter((f) => f.pose_diff_pct == null || f.pose_diff_pct <= maxDiff)),
-    [allFrames, maxDiff],
+    () =>
+      allFrames.filter(
+        (f) => (maxDiff == null || f.pose_diff_pct == null || f.pose_diff_pct <= maxDiff) && !(hideSleeves && f.sleeves),
+      ),
+    [allFrames, maxDiff, hideSleeves],
   );
   const hidden = allFrames.length - frames.length;
   const [index, setIndex] = useState(0);
@@ -137,7 +165,7 @@ export default function Viewer() {
     // new pose: start at the latest photo, compare with the first
     setIndex(Math.max(0, frames.length - 1));
     setCompare(0);
-  }, [poseId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [poseId, group]); // eslint-disable-line react-hooks/exhaustive-deps
 
   usePreload(frames, index);
 
@@ -227,16 +255,30 @@ export default function Viewer() {
             : ""
         }
       >
-        <select className="select" value={poseId ?? ""} onChange={(e) => set("pose_id", e.target.value)}>
+        <select className="select" value={group ?? poseId ?? ""} onChange={(e) => set("pose_id", e.target.value)}>
           {cats.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name} ({c.photo_count})
             </option>
           ))}
+          <option value="abs">Abs ({dash?.abs.visible ?? 0})</option>
+          <option value="face">Face ({dash?.face.visible ?? 0})</option>
         </select>
+        <button
+          className={`btn ${hideSleeves ? "btn-primary" : ""}`}
+          onClick={() => setHideSleeves((v) => !v)}
+          aria-pressed={hideSleeves}
+          title={
+            hideSleeves
+              ? "showing only photos with bare arms (click to show all)"
+              : "hide photos where a sleeve or other clothing covers the arm"
+          }
+        >
+          <Shirt size={14} /> {hideSleeves ? `Sleeves hidden (${sleeveCount})` : "Hide sleeves"}
+        </button>
         <input type="date" className="input" value={from} onChange={(e) => set("from", e.target.value)} title="from" />
         <input type="date" className="input" value={to} onChange={(e) => set("to", e.target.value)} title="to" />
-        {seq.data && seq.data.unaligned > 0 && (
+        {!isAbs && seq.data && seq.data.unaligned > 0 && (
           <button className="btn" onClick={() => run.mutate({ path: `/poses/${poseId}/align` })}>
             <Crosshair size={14} /> Align
           </button>
@@ -252,7 +294,17 @@ export default function Viewer() {
         </div>
       ) : frames.length === 0 ? (
         <div className="p-6">
-          <Empty title="No dated photos in this pose yet">Assign photos to this pose in the Library, give them dates, and run alignment.</Empty>
+          {group === "face" ? (
+            <Empty title="No face close-ups yet">
+              Photos are checked for a visible face automatically when poses are classified. You can also add photos by hand with the "Face visible" switch in the Library photo drawer.
+            </Empty>
+          ) : isAbs ? (
+            <Empty title="No photos with visible abs yet">
+              Photos are checked for visible abs automatically when poses are classified. You can also mark photos by hand with the "Abs visible" switch in the Library photo drawer.
+            </Empty>
+          ) : (
+            <Empty title="No dated photos in this pose yet">Assign photos to this pose in the Library, give them dates, and run alignment.</Empty>
+          )}
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
@@ -411,7 +463,19 @@ export default function Viewer() {
                 )}
               </div>
             )}
-            <div className="flex flex-col gap-1.5">
+            {isAbs && (
+              <div className="text-[11px] text-muted">
+                {group === "face"
+                  ? "Each frame is a face close-up scaled and rotated (never stretched) so your eyes and mouth land in the same spots, across every pose type."
+                  : "Each frame is a torso close-up scaled and rotated (never stretched) so your shoulders and hips land in the same spots, which lines up the abs across every pose type."}{" "}
+                {cur && (
+                  <Link to={`/library?photo=${cur.id}`} className="underline">
+                    Open this photo
+                  </Link>
+                )}
+              </div>
+            )}
+            <div className={`flex flex-col gap-1.5 ${isAbs ? "hidden" : ""}`}>
               <span className="label">Pose match</span>
               <select className="select" value={maxDiff ?? ""} onChange={(e) => setMaxDiff(e.target.value === "" ? null : Number(e.target.value))}>
                 <option value="">all photos</option>
@@ -434,7 +498,7 @@ export default function Viewer() {
               </label>
               <Toggle checked={fade} onChange={setFade} label="Crossfade while playing" />
             </div>
-            {cur && (
+            {cur && !isAbs && (
               <div className="flex gap-1.5">
                 <Link to={`/editor/${cur.id}`} className="btn btn-sm">
                   <Pencil size={13} /> Edit alignment
@@ -490,8 +554,18 @@ export default function Viewer() {
           </aside>
         </div>
       )}
-      {poseId && (
-        <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} poseId={poseId} from={from} to={to} defaultFps={fps} maxPoseDiff={maxDiff} />
+      {(poseId || isAbs) && (
+        <ExportDialog
+          open={exportOpen}
+          onClose={() => setExportOpen(false)}
+          poseId={poseId ?? null}
+          group={group}
+          from={from}
+          to={to}
+          defaultFps={fps}
+          maxPoseDiff={isAbs ? null : maxDiff}
+          hideSleeves={hideSleeves}
+        />
       )}
     </div>
   );

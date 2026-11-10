@@ -2,6 +2,30 @@
 
 Newest first. Each entry says what was done, what was verified, and what is next, so a new session can resume.
 
+## 2026-11-10 — Face group
+- New Face group across all poses (schema v7; DB backed up to the session scratchpad as physiquelapse.before-v7.db): face close-ups aligned by eye-midpoint and mouth-midpoint (rigid move, 720×720), listed with the poses on the Dashboard, Viewer and Library; export with `group: "face"`; drawer "Face visible" switch with reset; runs after Classify poses.
+- Visible check: CLIP on the face centre and on the mouth/chin of the aligned close-up, lower score wins, threshold 0.85 (phone in front of the face is the main reason to leave a photo out). Prototype on the real photos: alignment consistent by eye; covered faces mostly removed, some faces with the phone over the mouth still pass. 134 tests pass.
+
+## 2026-11-10 — Hide sleeves, faster pose review
+- Sleeves check (schema v6; DB backed up to the session scratchpad as physiquelapse.before-v6.db): CLIP on the shown arm's upper arm (upright, band-masked) and on the whole person (upright), lower score wins, threshold 0.5. Runs after Classify poses. On the 1,125 real photos: 28 flagged; on a hand-checked set of 32 sleeved photos it caught 27 (misses: tilted white-tee shots, a lifted tee, one green tee) and flagged 1 cut-off sleeveless shirt.
+- Viewer "Hide sleeves" button (remembered per browser, also applies to Export); Library "hide sleeves / only sleeves" filter; drawer "Sleeves cover the arms" switch with reset.
+- Pose review: Accept button in the drawer (and A key), ✓ on cards needing review, "Accept poses" in the bulk bar, and a "Pose examples" strip above the needs-review list (click an example to move the selected photo there). The drawer moves on to the next photo after an accept.
+- Fixed: abs (and sleeves) checks crashed when a photo was deleted while they ran. 132 tests pass.
+
+## 2026-11-10 — Abs listed with the poses
+- Abs is now a row in the Dashboard pose table and an entry in the Viewer and Library pose lists. The separate "Find abs" / "Abs" buttons and the Library "abs visible" checkbox are gone.
+- Abs detection runs automatically after "Classify poses" (only unchecked photos; skipped if the CLIP weights are missing). 128 tests pass; screenshots of the Dashboard and Viewer checked.
+
+## 2026-11-09 — Session 2 (cont.): Abs group
+- New Abs group across all poses: CLIP torso check + manual override, aligned torso close-ups, Viewer/Export/Library/drawer/Dashboard support. Schema v5 (DB backed up to the session scratchpad as physiquelapse.before-v5.db).
+- Verified on the real photos: 13 of 119 found, all correct by eye, clean score gap (≥ 0.80 vs ≤ 0.18); close-ups line up; Viewer screenshot checked. 127 tests pass.
+
+## 2026-11-09 — Session 2 (cont.): drawer fixes from user screenshot
+- Photo drawer image now sits in a fixed-height box (tall photos used to overflow and cover the date controls).
+- Date changes are two-step: "change" → pick date → "Change date" → confirm panel showing old → new → Confirm. Removing a date and bulk "set date" / "shift days" also ask for confirmation. Low-confidence (file-time) dates get an explanation.
+- Finished jobs leave the job panel after 15 s (failed ones stay until dismissed). `/library?photo=<id>` opens a photo's drawer directly.
+- Verified with headless Edge screenshots of the drawer for the tall photo (IMG_4831); the confirm flow itself was not clicked through (no browser automation here).
+
 ## 2026-11-09 — Session 2 (cont.): joint alignment, pose match, left/right groups
 - Alignment now fits shoulders, elbows and wrists too (default "joints"); elbow/wrist landing error dropped 1.3–4× on the real photos. No image warping (it would fake size changes).
 - Pose-match score per photo + Viewer/Export filter; mirror-selfie groups split into left/right by real side; hand-assigned photos follow their side.

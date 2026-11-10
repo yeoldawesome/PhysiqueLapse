@@ -248,6 +248,21 @@ def side_sibling(rule_key: str | None, vec: list[float] | None, cats_by_key: dic
     return None
 
 
+def _queue_abs_check() -> None:
+    """Keep the abs, sleeves and face checks up to date with the poses: after classifying, check
+    any photos not yet checked (a no-op when all are checked)."""
+    try:
+        from ..jobs import runner
+        from .clip_backend import available
+
+        if available():
+            runner().enqueue("detect_abs", {})
+            runner().enqueue("detect_sleeves", {})
+            runner().enqueue("detect_faces", {})
+    except Exception as e:  # never fail classification over this
+        log.warning("could not queue the abs check: %s", e)
+
+
 @job("classify_poses", lane="cv", title="Classify poses")
 def job_classify(ctx: JobContext, params: dict) -> dict:
     ids = params.get("ids")
@@ -318,6 +333,7 @@ def job_classify(ctx: JobContext, params: dict) -> dict:
                 ctx.progress(i, total)
         s.commit()
     method = "kNN" if model else "rules"
+    _queue_abs_check()
     return {
         "message": f"Classified {total} photos with {method}: {changed} changed, {review} need review"
         + (f"; {moved} hand-assigned photos moved to their correct side" if moved else ""),

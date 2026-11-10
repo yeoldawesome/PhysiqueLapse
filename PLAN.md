@@ -1,6 +1,6 @@
 # PhysiqueLapse — Plan
 
-Status: **v1.8, 2026-11-09 — joint-level alignment, pose-match filter, left/right groups (see 'Joints and sides'); — body-size estimates from photos added (see 'Body sizes from photos'); — Snapchat zip upload + filter added (see 'Snapchat zips'); — finer categories + body-fit alignment (see 'Second pass' below); — M1–M6 built; M2/M3 verified on the user's real photos (122 iCloud lifting photos); M7 polish partly done.** Remaining: Snapchat parser on a real export (Q3), browser click-through, threshold calibration.
+Status: **v1.9, 2026-11-09 — Abs group added (see 'Abs group'); — joint-level alignment, pose-match filter, left/right groups (see 'Joints and sides'); — body-size estimates from photos added (see 'Body sizes from photos'); — Snapchat zip upload + filter added (see 'Snapchat zips'); — finer categories + body-fit alignment (see 'Second pass' below); — M1–M6 built; M2/M3 verified on the user's real photos (122 iCloud lifting photos); M7 polish partly done.** Remaining: Snapchat parser on a real export (Q3), browser click-through, threshold calibration.
 
 ### Progress tracker (updated as work lands)
 
@@ -80,6 +80,12 @@ Local-only physique progress tracker: upload → date → pose → align → tim
 - **Real photos, median joint distance to the reference (canvas px), body fit → joints fit:** Front Double Bicep elbow 56 → 14, wrist 46 → 22; Flex elbow 24 → 10, wrist 28 → 16; Side Arm 90 elbow 63 → 26, wrist 50 → 43; Side Arm Down elbow 21 → 16, wrist 33 → 25; shoulders 9–15. Median pose difference per category 2.8–6.4 % of torso length. Checked visually with the reference joints drawn as crosses on aligned frames.
 - **Left/right groups:** Mirror Selfie Front split by phone hand, Flex by flexed arm, Side (Arm Down) and Side (Arm 90) by the side facing the mirror (the stage Side Arm Down Flex already was). Names use the subject's REAL side: in a mirror selfie the image is mirrored and the pose model labels it as if it weren't, so real side = opposite of the model label; equivalently, the arm on the image's right is the real right arm. Flipping a photo in the app moves it to the other side group. Old categories are migrated to the "right" half (reference cleared); hand-assigned photos keep their pose but follow their actual side on the next Classify.
 - On the 120 photos: Front (phone left hand) 32 / (right) 1, Flex (right arm) 16 / (left) 1, Side Arm Down left side 19, Side Arm 90 left side 35 / right side 2 (one genuine, one hand-assigned car photo). 125 tests pass.
+
+### Abs group, 2026-11-09 (user: a group of every photo with visible abs, to see ab progress)
+- **An attribute, not a pose category:** a photo keeps its pose group and can also be in Abs (`photos.abs_visible / abs_score / abs_source / abs_version`, schema v5). Manual override (`abs_source = manual`) is never overwritten by detection; "reset" returns to automatic.
+- **Detection (`detect_abs` job):** CLIP zero-shot on a crop of the torso (shoulders to just below the hips, after the photo's flip): bare stomach / visible abs vs. tank top / t-shirt / covered torso; threshold `abs_threshold` = 0.5. On the 119 real photos the scores split cleanly: 11 shirtless photos 0.98–1.00, two "tank top pulled up" photos 0.87 and 0.80, everything else ≤ 0.18 (all covered torsos) → 13 found, all correct by eye. 24 s.
+- **Close-ups:** one rigid move per photo (two-point similarity: shoulder-mid → 10 %, hip-mid → 86 % of a 1080×1080 canvas; no warp), stored in `data/derived/abs/{id}.jpg`, so the abdomen sits in the same place and at the same scale relative to torso length in every frame, across pose types.
+- **UI:** Viewer pose picker → "Abs (close-ups from every pose)" with Find abs, playback, onion/split and export (`/exports` with `group: "abs"`); Library "abs visible" filter and an "abs" badge on cards; drawer "Abs visible" switch with detected % / set-by-you · reset; Dashboard "Find abs" and "Abs" buttons. 127 tests pass.
 ---
 
 ## 0. Environment findings (this machine, checked 2026-11-09)

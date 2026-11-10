@@ -162,23 +162,45 @@ def job_export(ctx: JobContext, params: dict) -> dict:
         if ex is None:
             raise ValueError("export not found")
         prm = dict(ex.params or {})
-        pose_id = int(prm["pose_id"])
-        cat = s.get(PoseCategory, pose_id)
-        cat_name = cat.name if cat else "pose"
+        group = prm.get("group")
+        pose_id = int(prm["pose_id"]) if prm.get("pose_id") is not None else -1
+        cat = s.get(PoseCategory, pose_id) if pose_id > 0 else None
+        cat_name = {"abs": "Abs", "face": "Face"}.get(group) or (cat.name if cat else "pose")
         settings = load_settings(s)
         dfrom = date.fromisoformat(prm["from"]) if prm.get("from") else None
         dto = date.fromisoformat(prm["to"]) if prm.get("to") else None
         mpd = prm.get("max_pose_diff_pct")
-        photos, skipped = collect_frames(s, pose_id, dfrom, dto, float(mpd) if mpd is not None else None)
+        if group in ("abs", "face"):
+            from . import abs_view, face_view
+
+            mod = abs_view if group == "abs" else face_view
+            path_of = abs_view.abs_path if group == "abs" else face_view.face_path
+            seq = mod.sequence(s, dfrom, dto)
+            photos = [s.get(Photo, f["id"]) for f in seq["frames"] if f["aligned_url"]]
+            skipped = len(seq["frames"]) - len(photos)
+            if prm.get("hide_sleeves"):
+                kept = [p for p in photos if not p.sleeves]
+                skipped += len(photos) - len(kept)
+                photos = kept
+            frame_path = lambda p: path_of(p.id)  # noqa: E731
+            canvas_w = canvas_h = mod.CANVAS
+        else:
+            photos, skipped = collect_frames(s, pose_id, dfrom, dto, float(mpd) if mpd is not None else None)
+            if prm.get("hide_sleeves"):
+                kept = [p for p in photos if not p.sleeves]
+                skipped += len(photos) - len(kept)
+                photos = kept
+            frame_path = lambda p: config.abs_path(s.get(Alignment, p.id).output_path)  # noqa: E731
+            canvas_w, canvas_h = settings.canvas_w, settings.canvas_h
         if not photos:
             raise ValueError("no aligned frames in this range; run alignment first")
         fmt = prm.get("format", "mp4")
         fps = float(prm.get("fps", 2.0))
         crossfade = float(prm.get("crossfade", 0.0))
         cap = prm.get("caption") or {}
-        width = int(prm.get("width") or settings.canvas_w)
+        width = int(prm.get("width") or canvas_w)
         W = max(64, width - width % 2)
-        H = round(settings.canvas_h * W / settings.canvas_w)
+        H = round(canvas_h * W / canvas_w)
         H -= H % 2
         first = photos[0].taken_at
         metric_ids = [int(m) for m in cap.get("metrics", [])]
@@ -186,8 +208,7 @@ def job_export(ctx: JobContext, params: dict) -> dict:
         frames: list[np.ndarray] = []
         for i, p in enumerate(photos, 1):
             ctx.check_cancelled()
-            a = s.get(Alignment, p.id)
-            with Image.open(config.abs_path(a.output_path)) as im:
+            with Image.open(frame_path(p)) as im:
                 img = im.convert("RGB").resize((W, H), Image.Resampling.LANCZOS)
             lines = caption_lines(p, first, cap, _stats_for(s, p, metric_ids, settings.stats_window_days))
             frames.append(np.asarray(draw_caption(img, lines)))

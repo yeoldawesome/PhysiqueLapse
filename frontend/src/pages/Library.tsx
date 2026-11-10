@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
-import { useBulk, useCategories, usePhotos, type PhotoFilters } from "../api/queries";
+import { useBulk, useCategories, useDashboard, usePatchPhoto, usePhotos, type PhotoFilters } from "../api/queries";
+import PoseExamples from "../components/PoseExamples";
 import PhotoGrid from "../components/PhotoGrid";
 import PhotoDrawer from "../components/PhotoDrawer";
 import BulkBar from "../components/BulkBar";
@@ -21,15 +22,18 @@ function readSize(): number {
 export default function Library() {
   const [params, setParams] = useSearchParams();
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [open, setOpen] = useState<number | null>(null);
+  // ?photo=<id> opens that photo's drawer (deep link)
+  const [open, setOpen] = useState<number | null>(() => (params.get("photo") ? Number(params.get("photo")) : null));
   const [q, setQ] = useState(params.get("q") ?? "");
   const [size, setSize] = useState<number>(readSize);
   const { data: cats = [] } = useCategories();
+  const { data: dash } = useDashboard();
   const bulk = useBulk();
 
   const filters: PhotoFilters = useMemo(
     () => ({
-      pose_id: params.get("pose_id") ?? undefined,
+      pose_id: ["abs", "face"].includes(params.get("pose_id") ?? "") ? undefined : params.get("pose_id") ?? undefined,
+      face: params.get("pose_id") === "face" ? "visible" : undefined,
       from: params.get("from") ?? undefined,
       to: params.get("to") ?? undefined,
       source: params.get("source") ?? undefined,
@@ -39,6 +43,8 @@ export default function Library() {
       no_date: params.get("no_date") === "1" ? true : undefined,
       excluded: (params.get("excluded") as PhotoFilters["excluded"]) ?? "all",
       landmarks: params.get("landmarks") ?? undefined,
+      abs: params.get("pose_id") === "abs" ? "visible" : ((params.get("abs") as PhotoFilters["abs"]) ?? undefined),
+      sleeves: (params.get("sleeves") as PhotoFilters["sleeves"]) ?? undefined,
       q: params.get("q") ?? undefined,
       sort: params.get("sort") ?? "taken_at_desc",
       page: Number(params.get("page") ?? 1),
@@ -84,6 +90,23 @@ export default function Library() {
   }, [photos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ids = useMemo(() => [...selected], [selected]);
+  const reviewing = filters.needs_review === true;
+  const patchPhoto = usePatchPhoto();
+  // in the needs-review list a confirmed photo drops out, so move the drawer on to the next one
+  const advanceFrom = useCallback(
+    (id: number) => {
+      if (!reviewing || open !== id) return;
+      const i = photos.findIndex((p) => p.id === id);
+      const next = photos[i + 1] ?? photos[i - 1];
+      setOpen(next ? next.id : null);
+      setSelected(next ? new Set([next.id]) : new Set());
+    },
+    [reviewing, open, photos],
+  );
+  const setPose = useCallback(
+    (id: number, poseId: number) => patchPhoto.mutate({ id, body: { pose_category_id: poseId } }, { onSuccess: () => advanceFrom(id) }),
+    [patchPhoto, advanceFrom],
+  );
   const step = useCallback(
     (delta: number) => {
       if (open == null) return;
@@ -110,10 +133,14 @@ export default function Library() {
         f: () => {
           if (ids.length) bulk.mutate({ ids, toggle_flip: true });
         },
+        a: () => {
+          const p = photos.find((x) => x.id === open);
+          if (p && p.pose_needs_review && p.pose_category_id != null) setPose(p.id, p.pose_category_id);
+        },
         ArrowRight: () => step(1),
         ArrowLeft: () => step(-1),
       }),
-      [photos, open, ids, bulk, step],
+      [photos, open, ids, bulk, step, setPose],
     ),
   );
 
@@ -150,6 +177,8 @@ export default function Library() {
                 {c.name} ({c.photo_count})
               </option>
             ))}
+            <option value="abs">Abs ({dash?.abs.visible ?? 0})</option>
+            <option value="face">Face ({dash?.face.visible ?? 0})</option>
           </select>
           <input type="date" className="input" value={params.get("from") ?? ""} onChange={(e) => set("from", e.target.value)} />
           <span className="text-muted">to</span>
@@ -175,6 +204,11 @@ export default function Library() {
             <option value="pending">pending</option>
             <option value="none">no person</option>
             <option value="failed">failed</option>
+          </select>
+          <select className="select" value={params.get("sleeves") ?? ""} onChange={(e) => set("sleeves", e.target.value)} title="clothing covering the arms">
+            <option value="">any clothing</option>
+            <option value="hide">hide sleeves</option>
+            <option value="only">only sleeves</option>
           </select>
           <select className="select" value={params.get("excluded") ?? "all"} onChange={(e) => set("excluded", e.target.value)}>
             <option value="all">incl. excluded</option>
@@ -212,6 +246,16 @@ export default function Library() {
         </div>
 
         <div className="flex-1 overflow-auto p-4">
+          {reviewing && (
+            <PoseExamples
+              categories={cats}
+              selectedCount={ids.length}
+              onPick={(poseId) => {
+                if (ids.length === 1) setPose(ids[0], poseId);
+                else if (ids.length > 1) bulk.mutate({ ids, patch: { pose_category_id: poseId } });
+              }}
+            />
+          )}
           {isLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted">
               <Spinner /> loading…
@@ -223,7 +267,7 @@ export default function Library() {
                 : "Add photos on the Import page: drag and drop, pick a folder, or point at a folder on this computer."}
             </Empty>
           ) : (
-            <PhotoGrid photos={photos} categories={cats} selected={selected} setSelected={setSelected} onOpen={setOpen} size={size} />
+            <PhotoGrid photos={photos} categories={cats} selected={selected} setSelected={setSelected} onOpen={setOpen} onAccept={setPose} size={size} />
           )}
           {pages > 1 && (
             <div className="mt-4 flex items-center justify-center gap-2 text-sm">
@@ -248,7 +292,7 @@ export default function Library() {
           onClear={() => setSelected(new Set())}
         />
       </div>
-      {open != null && <PhotoDrawer photoId={open} onClose={() => setOpen(null)} />}
+      {open != null && <PhotoDrawer photoId={open} onClose={() => setOpen(null)} onAccepted={() => advanceFrom(open)} />}
     </div>
   );
 }

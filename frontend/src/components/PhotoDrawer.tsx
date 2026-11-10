@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { Bone, ExternalLink, FlipHorizontal2, RefreshCw, Ruler, Star, Trash2, X } from "lucide-react";
+import { Bone, Check, ExternalLink, FlipHorizontal2, RefreshCw, Ruler, Star, Trash2, X } from "lucide-react";
 import { MeasureOverlayModal } from "./PhotoMeasurements";
 import { useCategories, useCategoryMutations, useDeletePhoto, usePatchPhoto, usePhoto } from "../api/queries";
 import { post } from "../api/client";
@@ -19,7 +19,7 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
-export default function PhotoDrawer({ photoId, onClose }: { photoId: number; onClose: () => void }) {
+export default function PhotoDrawer({ photoId, onClose, onAccepted }: { photoId: number; onClose: () => void; onAccepted?: () => void }) {
   const { data: p, isLoading } = usePhoto(photoId);
   const { data: cats = [] } = useCategories();
   const patch = usePatchPhoto();
@@ -49,8 +49,10 @@ export default function PhotoDrawer({ photoId, onClose }: { photoId: number; onC
         </button>
       </div>
 
-      <div className="checker relative flex items-center justify-center" style={{ minHeight: 280 }}>
-        <div className="relative" style={{ aspectRatio: `${p.width} / ${p.height}`, maxHeight: 420, width: "100%" }}>
+      {/* fixed-height box: any photo shape fits inside (object-contain); the landmark overlay
+          uses the same contain fit through its viewBox, so it stays registered */}
+      <div className="checker relative h-[440px] w-full shrink-0 overflow-hidden">
+        <div className="absolute inset-0 bottom-11">
           <img
             src={p.preview_url}
             alt=""
@@ -94,6 +96,16 @@ export default function PhotoDrawer({ photoId, onClose }: { photoId: number; onC
               </span>
             )}
           </div>
+          {p.pose_needs_review && cat && (
+            <button
+              className="btn btn-primary justify-center"
+              disabled={busy}
+              onClick={() => patch.mutate({ id: p.id, body: { pose_category_id: cat.id } }, { onSuccess: () => onAccepted?.() })}
+              title="the pose is right: confirm it (shortcut A)"
+            >
+              <Check size={14} /> Accept "{cat.name}"
+            </button>
+          )}
           <div className="flex gap-1.5">
             <select
               className="select flex-1"
@@ -135,6 +147,63 @@ export default function PhotoDrawer({ photoId, onClose }: { photoId: number; onC
             label="Flip horizontally"
           />
           <FlipHorizontal2 size={14} className="text-muted" />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <Toggle
+            checked={!!p.abs_visible}
+            disabled={busy}
+            onChange={(v) => patch.mutate({ id: p.id, body: { abs_visible: v } })}
+            label="Abs visible (Abs group)"
+          />
+          <span className="text-[11px] text-muted">
+            {p.abs_source === "manual" ? (
+              <button className="underline" onClick={() => patch.mutate({ id: p.id, body: { abs_auto: true } })} title="go back to automatic detection">
+                set by you · reset
+              </button>
+            ) : p.abs_score != null ? (
+              `detected ${Math.round(p.abs_score * 100)}%`
+            ) : (
+              "not checked yet"
+            )}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <Toggle
+            checked={!!p.face_visible}
+            disabled={busy}
+            onChange={(v) => patch.mutate({ id: p.id, body: { face_visible: v } })}
+            label="Face visible (Face group)"
+          />
+          <span className="text-[11px] text-muted">
+            {p.face_source === "manual" ? (
+              <button className="underline" onClick={() => patch.mutate({ id: p.id, body: { face_auto: true } })} title="go back to automatic detection">
+                set by you · reset
+              </button>
+            ) : p.face_score != null ? (
+              `detected ${Math.round(p.face_score * 100)}%`
+            ) : (
+              "not checked yet"
+            )}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <Toggle
+            checked={!!p.sleeves}
+            disabled={busy}
+            onChange={(v) => patch.mutate({ id: p.id, body: { sleeves: v } })}
+            label="Sleeves cover the arms"
+          />
+          <span className="text-[11px] text-muted">
+            {p.sleeves_source === "manual" ? (
+              <button className="underline" onClick={() => patch.mutate({ id: p.id, body: { sleeves_auto: true } })} title="go back to automatic detection">
+                set by you · reset
+              </button>
+            ) : p.sleeves_score != null ? (
+              `bare arms ${Math.round(p.sleeves_score * 100)}%`
+            ) : (
+              "not checked yet"
+            )}
+          </span>
         </div>
         <Toggle
           checked={p.excluded}

@@ -152,6 +152,42 @@ export default function Dashboard() {
                   </td>
                 </tr>
               ))}
+              <tr className="border-t border-border/60">
+                <td className="px-4 py-2">
+                  <Link to="/library?pose_id=abs" className="hover:underline" title="every photo with visible abs, from any pose">
+                    Abs
+                  </Link>
+                </td>
+                <td className="px-4 py-2 tabular-nums">{data.abs.visible}</td>
+                <td className="px-4 py-2 text-xs text-muted">
+                  automatic (torso close-ups){data.abs.unchecked ? ` · ${data.abs.unchecked} not checked yet` : ""}
+                </td>
+                <td className="px-4 py-2 text-right">
+                  {data.abs.visible > 0 && (
+                    <Link to="/viewer?pose_id=abs" className="btn btn-sm">
+                      <Play size={12} /> view
+                    </Link>
+                  )}
+                </td>
+              </tr>
+              <tr className="border-t border-border/60">
+                <td className="px-4 py-2">
+                  <Link to="/library?pose_id=face" className="hover:underline" title="every photo where your face is visible, from any pose">
+                    Face
+                  </Link>
+                </td>
+                <td className="px-4 py-2 tabular-nums">{data.face.visible}</td>
+                <td className="px-4 py-2 text-xs text-muted">
+                  automatic (face close-ups){data.face.unchecked ? ` · ${data.face.unchecked} not checked yet` : ""}
+                </td>
+                <td className="px-4 py-2 text-right">
+                  {data.face.visible > 0 && (
+                    <Link to="/viewer?pose_id=face" className="btn btn-sm">
+                      <Play size={12} /> view
+                    </Link>
+                  )}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>

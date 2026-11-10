@@ -40,6 +40,15 @@ def photo_out(p: Photo, a: Alignment | None = None) -> dict[str, Any]:
         "landmarks_status": p.landmarks_status,
         "landmarks_quality": p.landmarks_quality,
         "excluded": p.excluded,
+        "abs_visible": p.abs_visible,
+        "abs_score": p.abs_score,
+        "abs_source": p.abs_source,
+        "sleeves": p.sleeves,
+        "sleeves_score": p.sleeves_score,
+        "sleeves_source": p.sleeves_source,
+        "face_visible": p.face_visible,
+        "face_score": p.face_score,
+        "face_source": p.face_source,
         "notes": p.notes,
         "created_at": iso(p.created_at),
         "updated_at": iso(p.updated_at),
@@ -140,6 +149,12 @@ class PhotoPatch(BaseModel):
     pose_category_id: int | None = None
     clear_pose: bool = False
     excluded: bool | None = None
+    abs_visible: bool | None = None  # manual override
+    abs_auto: bool = False  # drop the manual override, go back to detection
+    sleeves: bool | None = None  # manual override: True = clothing covers the arms
+    sleeves_auto: bool = False
+    face_visible: bool | None = None  # manual override for the Face group
+    face_auto: bool = False
     notes: str | None = None
 
 
@@ -149,6 +164,7 @@ class BulkPatch(BaseModel):
     date_shift_days: float | None = None
     rederive_date_from: str | None = None  # exif|filename|mtime|auto
     toggle_flip: bool = False
+    accept_pose: bool = False  # confirm each photo's current pose (same as picking it by hand)
     delete: bool = False
 
 

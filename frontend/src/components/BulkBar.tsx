@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { CalendarClock, EyeOff, FlipHorizontal2, Trash2, X } from "lucide-react";
+import { CalendarClock, EyeOff, FlipHorizontal2, Trash2, X, Check } from "lucide-react";
 import type { Category } from "../api/types";
 import { useBulk } from "../api/queries";
 import { ConfirmButton } from "./ui";
+import { fmtDateTime } from "../lib/format";
 
 export default function BulkBar({
   ids,
@@ -52,18 +53,31 @@ export default function BulkBar({
         ))}
         <option value="clear">— unassign —</option>
       </select>
+      <button className="btn btn-sm" disabled={busy} onClick={() => run({ ids, accept_pose: true })} title="confirm the pose each selected photo already has">
+        <Check size={14} /> Accept poses
+      </button>
 
       <span className="mx-1 h-5 w-px bg-border" />
       <input type="datetime-local" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
-      <button className="btn btn-sm" disabled={!date || busy} onClick={() => run({ ids, patch: { taken_at: date + ":00" } })}>
+      <ConfirmButton
+        className="btn btn-sm"
+        disabled={!date || busy}
+        confirmText={`Set ${ids.length} to ${date ? fmtDateTime(date) : ""}?`}
+        onConfirm={() => run({ ids, patch: { taken_at: date + ":00" } })}
+      >
         set date
-      </button>
+      </ConfirmButton>
       <span className="flex items-center gap-1">
         <CalendarClock size={14} className="text-muted" />
         <input type="number" step="1" className="input w-16" value={shift} onChange={(e) => setShift(e.target.value)} />
-        <button className="btn btn-sm" disabled={busy || !shift} onClick={() => run({ ids, date_shift_days: Number(shift) })}>
+        <ConfirmButton
+          className="btn btn-sm"
+          disabled={busy || !shift || Number(shift) === 0}
+          confirmText={`Move ${ids.length} photo${ids.length === 1 ? "" : "s"} ${Math.abs(Number(shift))} day${Math.abs(Number(shift)) === 1 ? "" : "s"} ${Number(shift) > 0 ? "later" : "earlier"}?`}
+          onConfirm={() => run({ ids, date_shift_days: Number(shift) })}
+        >
           shift days
-        </button>
+        </ConfirmButton>
       </span>
       <select
         className="select"

@@ -46,6 +46,15 @@ export interface Photo {
   landmarks_status: LandmarkStatus;
   landmarks_quality: number | null;
   excluded: boolean;
+  abs_visible: boolean | null;
+  abs_score: number | null;
+  abs_source: "auto" | "manual" | "none";
+  sleeves: boolean | null;
+  sleeves_score: number | null;
+  sleeves_source: "auto" | "manual" | "none";
+  face_visible: boolean | null;
+  face_score: number | null;
+  face_source: "auto" | "manual" | "none";
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -76,6 +85,12 @@ export interface PhotoPatch {
   pose_category_id?: number | null;
   clear_pose?: boolean;
   excluded?: boolean;
+  abs_visible?: boolean;
+  abs_auto?: boolean;
+  sleeves?: boolean;
+  sleeves_auto?: boolean;
+  face_visible?: boolean;
+  face_auto?: boolean;
   notes?: string;
 }
 
@@ -85,6 +100,7 @@ export interface BulkPatch {
   date_shift_days?: number;
   rederive_date_from?: "exif" | "filename" | "mtime" | "auto";
   toggle_flip?: boolean;
+  accept_pose?: boolean;
   delete?: boolean;
 }
 
@@ -205,6 +221,8 @@ export interface SystemInfo {
 export interface Dashboard {
   counts: Record<string, number>;
   categories: Category[];
+  abs: { visible: number; checked: number; unchecked: number };
+  face: { visible: number; checked: number; unchecked: number };
   date_span: { first: string | null; last: string | null };
   latest: Photo[];
   weight: {
@@ -258,6 +276,7 @@ export interface SequenceFrame {
   stats: StatAt[];
   measurements: Record<string, number>;
   pose_diff_pct: number | null;
+  sleeves?: boolean | null; // clothing covers the arms (null = not checked)
 }
 
 export interface Sequence {

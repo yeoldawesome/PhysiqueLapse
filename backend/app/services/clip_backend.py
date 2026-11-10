@@ -118,6 +118,11 @@ def get_scorer() -> ClipScorer:
         return _scorer
 
 
+def available() -> bool:
+    """True when abs detection can run: a scorer is loaded (or injected) or weights are on disk."""
+    return _scorer is not None or local_weights() is not None
+
+
 def set_scorer_for_tests(s: ClipScorer | None) -> None:
     global _scorer
     _scorer = s

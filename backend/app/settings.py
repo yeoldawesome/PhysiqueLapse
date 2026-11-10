@@ -47,6 +47,9 @@ class AppSettings(BaseModel):
     units: Literal["lb", "kg"] = "lb"
     stats_window_days: int = 7
     measure_smooth_days: int = 21  # trend window for photo measurements
+    abs_threshold: float = 0.5  # CLIP probability above which a torso crop counts as "abs visible"
+    face_threshold: float = 0.85  # face-not-covered probability needed for the Face group
+    sleeves_threshold: float = 0.5  # "bare arms" probability below which a photo counts as "sleeves"
     # time
     timezone: str = "local"  # IANA name or "local"
     # dedupe

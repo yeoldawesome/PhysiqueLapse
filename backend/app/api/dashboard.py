@@ -11,6 +11,8 @@ from sqlmodel import Session, select
 from ..db import get_session
 from ..models import Alignment, ImportCandidate, Job, Metric, MetricEntry, Photo, PoseCategory
 from ..schemas import category_out, photo_out
+from .abs import summary as abs_summary
+from .faces import summary as face_summary
 
 router = APIRouter(tags=["dashboard"])
 
@@ -60,6 +62,8 @@ def dashboard(s: Session = Depends(get_session)) -> dict[str, Any]:
     return {
         "counts": counts,
         "categories": [category_out(c, per_pose.get(c.id, 0)) for c in cats],
+        "abs": abs_summary(s),
+        "face": face_summary(s),
         "date_span": {"first": first.isoformat() if first else None, "last": last.isoformat() if last else None},
         "latest": [photo_out(p) for p in latest],
         "weight": weight,

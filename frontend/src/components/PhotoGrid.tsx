@@ -8,6 +8,7 @@ export default function PhotoGrid({
   selected,
   setSelected,
   onOpen,
+  onAccept,
   size = 168,
 }: {
   photos: Photo[];
@@ -15,6 +16,7 @@ export default function PhotoGrid({
   selected: Set<number>;
   setSelected: (next: Set<number>) => void;
   onOpen: (id: number) => void;
+  onAccept?: (id: number, poseId: number) => void;
   size?: number;
 }) {
   const anchor = useRef<number | null>(null);
@@ -62,6 +64,7 @@ export default function PhotoGrid({
           isReference={refIds.has(p.id)}
           onSelect={onSelect}
           onOpen={onOpen}
+          onAccept={onAccept}
         />
       ))}
     </div>
