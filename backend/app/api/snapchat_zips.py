@@ -11,6 +11,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ..db import get_session
+from ..fsutil import replace_retry
 from ..jobs import job_to_dict, runner
 from ..models import ImportCandidate, ImportSession
 from ..schemas import PathIn, session_out
@@ -116,7 +117,7 @@ async def upload(sid: int, request: Request, name: str = Query(...), s: Session 
     if n == 0:
         tmp.unlink(missing_ok=True)
         raise HTTPException(422, "empty upload")
-    tmp.replace(dest)
+    replace_retry(tmp, dest)
     info = _add_zip(sess, dest, uploaded=True)
     s.add(sess)
     s.commit()

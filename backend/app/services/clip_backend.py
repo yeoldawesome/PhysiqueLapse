@@ -15,6 +15,7 @@ import numpy as np
 from PIL import Image
 
 from .. import config
+from ..fsutil import replace_retry
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ def local_weights():
             if os.path.getsize(src) > 1_000_000:
                 tmp = flat.with_suffix(".part")
                 shutil.copyfile(src, tmp)
-                tmp.replace(flat)
+                replace_retry(tmp, flat)
                 return flat
     return None
 

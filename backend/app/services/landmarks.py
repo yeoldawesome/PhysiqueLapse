@@ -17,6 +17,7 @@ import numpy as np
 from sqlmodel import select
 
 from .. import config
+from ..fsutil import replace_retry
 from ..jobs import JobContext, job
 from ..models import Alignment, Photo, PoseFeatures, now
 from ..settings import load_settings
@@ -92,7 +93,7 @@ def save_raw(photo_id: int, data: dict[str, Any]) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, separators=(",", ":")))
-    tmp.replace(p)
+    replace_retry(tmp, p)
 
 
 # ----------------------------------------------------------------------------- detection

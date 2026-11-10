@@ -24,6 +24,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 from .. import config
+from ..fsutil import replace_retry
 from ..jobs import JobContext, job
 from ..models import ImportSession
 from . import images
@@ -83,7 +84,7 @@ def _copy_entry(zf: zipfile.ZipFile, info: zipfile.ZipInfo, dest: Path) -> None:
     tmp = dest.with_suffix(dest.suffix + ".part")
     with zf.open(info) as src, open(tmp, "wb") as f:
         shutil.copyfileobj(src, f, 1 << 20)
-    tmp.replace(dest)
+    replace_retry(tmp, dest)
     try:
         ts = time.mktime(info.date_time + (0, 0, -1))
         os.utime(dest, (ts, ts))

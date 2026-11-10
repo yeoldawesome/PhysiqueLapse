@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 from sqlmodel import Session, select
 
 from .. import config
+from ..fsutil import replace_retry
 from ..jobs import JobContext, job
 from ..models import Alignment, Export, Photo, PoseCategory
 from ..settings import load_settings
@@ -361,7 +362,7 @@ def job_export(ctx: JobContext, params: dict) -> dict:
                 imgs.append(Image.fromarray(blended(a, b, t)).quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE))
                 durs.append(1000 / out_fps)
             imgs[0].save(tmp, format="GIF", save_all=True, append_images=imgs[1:], duration=[round(d) for d in durs], loop=0, optimize=False, disposal=1)
-        tmp.replace(path)
+        replace_retry(tmp, path)
     except Exception:
         tmp.unlink(missing_ok=True)
         with ctx.session() as s:

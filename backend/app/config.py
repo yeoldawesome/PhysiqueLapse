@@ -8,13 +8,24 @@ relative to DATA_DIR so the folder can be moved or backed up by copying it.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = PROJECT_ROOT / "backend"
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
-DATA_DIR = Path(os.environ.get("DATA_DIR") or (PROJECT_ROOT / "data")).resolve()
+# The desktop build (PyInstaller): the built website is bundled next to the code, and each
+# Windows user's library lives in %LOCALAPPDATA%\PhysiqueLapse, so installing, updating or
+# uninstalling the program never touches it.
+FROZEN = bool(getattr(sys, "frozen", False))
+if FROZEN:
+    FRONTEND_DIST = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "frontend_dist"
+    _default_data = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "PhysiqueLapse"
+else:
+    _default_data = PROJECT_ROOT / "data"
+
+DATA_DIR = Path(os.environ.get("DATA_DIR") or _default_data).resolve()
 ORIGINALS_DIR = DATA_DIR / "originals"
 DERIVED_DIR = DATA_DIR / "derived"
 EXAMPLES_DIR = DATA_DIR / "examples"  # uploaded pose examples (not library photos)

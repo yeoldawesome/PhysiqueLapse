@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
+
+# FastAPI ships OpenTelemetry instrumentation that can export traces/logs when the environment
+# configures an exporter. This app never sends data anywhere: switch it off regardless of
+# whatever OTEL_* / FASTAPI_OTEL_* variables a user's machine happens to have.
+os.environ["FASTAPI_OTEL_AUTO_CONFIGURE"] = "false"
+os.environ["OTEL_SDK_DISABLED"] = "true"
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -20,7 +27,7 @@ def _register_job_handlers() -> None:
     """Import every service module that defines @job handlers."""
     from .services import ingest  # noqa: F401
 
-    for name in ("landmarks", "classify", "align", "export_video", "snapchat", "snapchat_zip", "physique_filter", "measure", "abs_view", "sleeves", "face_view", "people"):
+    for name in ("landmarks", "classify", "align", "export_video", "snapchat", "snapchat_zip", "physique_filter", "measure", "abs_view", "sleeves", "face_view", "people", "model_files"):
         try:
             __import__(f"app.services.{name}")
         except ImportError as e:  # module not written yet or optional dependency missing

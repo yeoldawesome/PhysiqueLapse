@@ -17,3 +17,7 @@ samples/
 .idea/
 .DS_Store
 Thumbs.db
+# desktop build output
+packaging/build/
+packaging/dist/
+packaging/out/

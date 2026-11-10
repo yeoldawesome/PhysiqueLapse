@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageOps
 
+from ..fsutil import replace_retry
+
 try:  # HEIC/HEIF support (iPhone photos)
     import pillow_heif
 
@@ -109,7 +111,7 @@ def save_jpeg(img: Image.Image, path: Path, quality: int = 88) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     img.save(tmp, "JPEG", quality=quality, optimize=True, progressive=False)
-    tmp.replace(path)
+    replace_retry(tmp, path)
 
 
 def jpeg_bytes(img: Image.Image, quality: int = 88) -> bytes:

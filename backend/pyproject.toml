@@ -34,6 +34,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]
 rembg = ["rembg>=2.0.60", "onnxruntime>=1.18"]
+# desktop app: native window (Windows WebView2) + the bundler that builds the .exe
+desktop = ["pywebview>=5.3", "pyinstaller>=6.10"]
 
 [tool.setuptools.packages.find]
 include = ["app*", "scripts*"]

@@ -4,64 +4,20 @@
     python backend/scripts/download_models.py --pose all # lite, full and heavy
     python backend/scripts/download_models.py --no-clip
 
-These are the only network calls the app ever needs besides pip/npm.
+These are the only network calls the app ever needs besides pip/npm. The desktop app does
+the same on first launch (job "download_models"); the list lives in app/services/model_files.py.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
-import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import config  # noqa: E402
-
-
-def download(url: str, dest: Path) -> None:
-    if dest.exists() and dest.stat().st_size > 0:
-        print(f"  ok      {dest}  ({dest.stat().st_size / 1e6:.1f} MB, already present)")
-        return
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(dest.suffix + ".part")
-    print(f"  fetch   {url}")
-    req = urllib.request.Request(url, headers={"User-Agent": "physiquelapse-setup"})
-    with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "wb") as f:
-        total = int(r.headers.get("Content-Length") or 0)
-        got = 0
-        while True:
-            b = r.read(1 << 20)
-            if not b:
-                break
-            f.write(b)
-            got += len(b)
-            if total:
-                print(f"\r          {got / 1e6:6.1f} / {total / 1e6:.1f} MB", end="", flush=True)
-    print()
-    tmp.replace(dest)
-    print(f"  saved   {dest}")
-
-
-def fetch_clip() -> None:
-    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
-    os.environ["HF_HOME"] = str(config.CLIP_CACHE_DIR / "hf")
-    from app.services.clip_backend import local_weights
-
-    if local_weights() is not None:
-        print(f"  ok      {local_weights()}  (already present)")
-        return
-    import open_clip
-
-    print(f"  CLIP    {config.CLIP_MODEL_NAME} / {config.CLIP_PRETRAINED} -> {config.CLIP_CACHE_DIR}")
-    open_clip.create_model_and_transforms(
-        config.CLIP_MODEL_NAME, pretrained=config.CLIP_PRETRAINED, cache_dir=str(config.CLIP_CACHE_DIR)
-    )
-    from app.services.clip_backend import local_weights
-
-    w = local_weights()
-    print(f"  ok      CLIP weights: {w}")
+from app.services import model_files as MF  # noqa: E402
 
 
 def main() -> int:
@@ -72,25 +28,21 @@ def main() -> int:
     config.ensure_dirs()
     print(f"Model folder: {config.MODELS_DIR}")
     variants = ["lite", "full", "heavy"] if args.pose == "all" else [args.pose]
+    files = {m.key: m for v in variants for m in MF.required(v)}
+    if args.no_clip:
+        files.pop("clip", None)
     ok = True
-    for v in variants:
+    for m in files.values():
+        if MF.present(m):
+            print(f"  ok      {m.label}  (already present)")
+            continue
+        print(f"  fetch   {m.label}  {m.url}")
         try:
-            download(config.POSE_MODEL_URLS[v], config.pose_model_path(v))
+            MF.download(m.url, m.path, lambda got, total: print(f"\r          {got / 1e6:6.1f} / {total / 1e6:.1f} MB", end="", flush=True))
+            print(f"\n  saved   {m.path}")
         except Exception as e:
             ok = False
-            print(f"  FAILED  pose {v}: {e}")
-    for kind, url in config.FACE_MODEL_URLS.items():  # face detector + recognizer (Filter people)
-        try:
-            download(url, config.face_model_path(kind))
-        except Exception as e:
-            ok = False
-            print(f"  FAILED  face {kind}: {e}")
-    if not args.no_clip:
-        try:
-            fetch_clip()
-        except Exception as e:
-            ok = False
-            print(f"  FAILED  CLIP: {e}")
+            print(f"\n  FAILED  {m.label}: {e}")
     return 0 if ok else 1
 
 

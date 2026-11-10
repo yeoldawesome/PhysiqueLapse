@@ -121,3 +121,19 @@ def system_info(s: Session = Depends(get_session)) -> dict[str, Any]:
         },
         "bind": f"{config.HOST}:{config.PORT}",
     }
+
+
+@router.get("/system/models")
+def models_status(s: Session = Depends(get_session)) -> dict[str, Any]:
+    """Which model files are missing (the desktop app downloads them on first launch)."""
+    from ..services import model_files as MF
+
+    miss = MF.missing(load_settings(s).pose_model)
+    return {"missing": [{"key": m.key, "label": m.label, "approx_mb": m.approx_mb} for m in miss], "missing_mb": sum(m.approx_mb for m in miss)}
+
+
+@router.post("/system/models/download")
+def models_download(s: Session = Depends(get_session)) -> dict[str, Any]:
+    from ..jobs import job_to_dict, runner
+
+    return job_to_dict(runner().enqueue("download_models", {"pose_variant": load_settings(s).pose_model}))

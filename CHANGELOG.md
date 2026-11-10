@@ -2,6 +2,12 @@
 
 Newest first. Each entry says what was done, what was verified, and what is next, so a new session can resume.
 
+## 2026-11-10 — Windows desktop app
+- `app/desktop.py`: the app in its own window (pywebview on WebView2), server on a free 127.0.0.1 port, "Starting…" screen, first-launch model download (job `download_models`, `GET/POST /api/system/models[/download]`, list in `services/model_files.py`, shared with `scripts/download_models.py`; CLIP now fetched as one file from LAION's Hugging Face repo, same 605,143,316 bytes), empty library opens on Start here, second launch opens a window on the running instance, closing the window stops the server, logs in `<data>/logs`.
+- Frozen builds keep data in `%LOCALAPPDATA%\PhysiqueLapse` and serve the bundled frontend (`config.FROZEN`).
+- `packaging/`: PyInstaller spec (one folder, no console, icon, version info), `build.ps1` (frontend → PyInstaller → portable zip → Inno Setup installer if installed), `installer.iss` (per-user, no admin, Start menu / desktop shortcuts, uninstall asks before deleting the library). `.github/workflows/release.yml`: tests + build + release on `v*` tags. README "Download" section. `desktop` extra (pywebview, pyinstaller).
+- Verified: from source the window opens on Start here and closing it shuts down cleanly; the frozen exe starts in ~2 s and downloaded a missing model by itself. The first frozen build failed landmark extraction (mediapipe imports matplotlib, which the spec excluded); fixed. Build size: 1,174 MB folder, 446 MB zip. 143 tests pass.
+
 ## 2026-11-10 — Start here guide
 - New "Start here" page (`/guide`, first sidebar item; linked from the Dashboard header and its empty state): intro and privacy note, a 6-step quick-start checklist that ticks itself from the real library (photos imported, landmarks done, pose examples, nothing needing review, aligned), a card per page and per built-in feature with a button to open it, tips for common problems, and keyboard shortcuts (each checked against the code). Checked by screenshot (5 of 6 steps done on the user's library).
 
