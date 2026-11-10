@@ -76,6 +76,10 @@ class Photo(SQLModel, table=True):
     face_score: float | None = None
     face_source: str = "none"  # auto|manual|none
     face_version: int | None = None
+    # "Filter people": is this photo of the library's owner?
+    person_label: str | None = None  # me | not_me, set by the user; never overwritten
+    person_status: str | None = Field(default=None, index=True)  # me | not_me | unsure | no_face (None = not scanned)
+    person_score: float | None = None  # face similarity to the photos marked "me"
     notes: str | None = None
     created_at: NaiveDatetime = Field(default_factory=now)
     updated_at: NaiveDatetime = Field(default_factory=now)
@@ -98,6 +102,21 @@ class PoseLabel(SQLModel, table=True):
     pose_category_id: int = Field(foreign_key="pose_categories.id")
     vector: list = Field(default_factory=list, sa_column=Column(JSON))
     created_at: NaiveDatetime = Field(default_factory=now)
+
+
+class PersonFace(SQLModel, table=True):
+    """The subject's face in a photo (OpenCV YuNet + SFace): a 128-number fingerprint for
+    telling the owner apart from other people."""
+
+    __tablename__ = "person_faces"
+
+    photo_id: int = Field(primary_key=True, foreign_key="photos.id")
+    n_faces: int = 0
+    feature: list = Field(default_factory=list, sa_column=Column(JSON))  # empty when no face was found
+    det_score: float | None = None
+    face_px: float | None = None  # face width in the analysed image
+    version: int = 1
+    computed_at: NaiveDatetime = Field(default_factory=now)
 
 
 class PoseExample(SQLModel, table=True):

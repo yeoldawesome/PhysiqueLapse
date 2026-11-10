@@ -22,3 +22,5 @@ i want the ability to save a time laps like in the view, want to be able to set 
 
 
 implement person sorting system
+
+in the library i would like to filter out pepole who are like not "me" i want a button for that in the library that says "filter people" and it allows you to select photos that are of you think it goes through the rest of the photos and gives you a list of potos that are not matches and it allows you to mass select them and delete them all and also have there be a delete all button for the ones that arnt "me"

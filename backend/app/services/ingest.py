@@ -240,7 +240,11 @@ def delete_photo(s: Session, photo: Photo, *, remember: bool = True) -> None:
 
     (config.DERIVED_DIR / "masks" / f"{pid}.png").unlink(missing_ok=True)
     (config.DERIVED_DIR / "abs" / f"{pid}.jpg").unlink(missing_ok=True)
-    for model in (Alignment, PoseFeatures, PhotoMeasurement):
+    (config.DERIVED_DIR / "face" / f"{pid}.jpg").unlink(missing_ok=True)
+    (config.DERIVED_DIR / "person_face" / f"{pid}.jpg").unlink(missing_ok=True)
+    from ..models import PersonFace
+
+    for model in (Alignment, PoseFeatures, PhotoMeasurement, PersonFace):
         row = s.get(model, pid)
         if row is not None:
             s.delete(row)

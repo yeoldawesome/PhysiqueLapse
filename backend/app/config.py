@@ -40,6 +40,12 @@ POSE_MODEL_URLS = {
     "full": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task",
     "heavy": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task",
 }
+# Face detection (YuNet) + face recognition (SFace) from the OpenCV model zoo (Apache-2.0); run by
+# OpenCV itself (cv2.FaceDetectorYN / cv2.FaceRecognizerSF), used by the "Filter people" feature.
+FACE_MODEL_URLS = {
+    "detector": "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+    "recognizer": "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+}
 CLIP_MODEL_NAME = "ViT-B-32"
 CLIP_PRETRAINED = "laion2b_s34b_b79k"
 
@@ -52,6 +58,11 @@ def clip_weights_path() -> Path:
 
 def pose_model_path(variant: str = "heavy") -> Path:
     return MODELS_DIR / f"pose_landmarker_{variant}.task"
+
+
+def face_model_path(kind: str) -> Path:
+    """kind: detector | recognizer"""
+    return MODELS_DIR / FACE_MODEL_URLS[kind].rsplit("/", 1)[-1]
 
 
 def ensure_dirs() -> None:

@@ -347,6 +347,10 @@ def _queue_abs_check() -> None:
             runner().enqueue("detect_abs", {})
             runner().enqueue("detect_sleeves", {})
             runner().enqueue("detect_faces", {})
+        from .people import models_available
+
+        if models_available():  # new photos get their face fingerprint for Filter people
+            runner().enqueue("scan_people", {})
     except Exception as e:  # never fail classification over this
         log.warning("could not queue the abs check: %s", e)
 

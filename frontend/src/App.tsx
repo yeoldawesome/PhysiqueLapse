@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router";
-import { Activity, Images, LayoutDashboard, ListChecks, Play, Settings as SettingsIcon, Upload } from "lucide-react";
+import { Activity, Images, LayoutDashboard, ListChecks, Play, Settings as SettingsIcon, Upload, UserX } from "lucide-react";
 import JobDrawer from "./components/JobDrawer";
 import Toasts from "./components/Toasts";
 import { useDashboard } from "./api/queries";
@@ -9,6 +9,7 @@ const NAV = [
   { to: "/library", label: "Library", icon: Images },
   { to: "/import", label: "Import", icon: Upload },
   { to: "/review", label: "Review queue", icon: ListChecks },
+  { to: "/people", label: "Filter people", icon: UserX },
   { to: "/viewer", label: "Viewer", icon: Play },
   { to: "/stats", label: "Stats", icon: Activity },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
@@ -18,6 +19,7 @@ export default function App() {
   const dash = useDashboard();
   const review = dash.data?.counts.review_queue ?? 0;
   const needsReview = dash.data?.counts.needs_review ?? 0;
+  const notMe = dash.data?.people?.not_me ?? 0;
   return (
     <div className="flex h-full">
       <aside className="flex w-52 shrink-0 flex-col border-r border-border bg-panel">
@@ -43,6 +45,11 @@ export default function App() {
               <Icon size={16} />
               <span className="flex-1">{label}</span>
               {to === "/review" && review > 0 && <span className="badge bg-accent-2/20 text-accent">{review}</span>}
+              {to === "/people" && notMe > 0 && (
+                <span className="badge bg-danger/15 text-danger" title="photos that don't look like you">
+                  {notMe}
+                </span>
+              )}
               {to === "/library" && needsReview > 0 && (
                 <span className="badge bg-warn/15 text-warn" title="poses needing review">
                   {needsReview}

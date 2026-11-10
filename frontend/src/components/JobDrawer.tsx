@@ -45,7 +45,7 @@ export default function JobDrawer() {
     }
     prev.current = new Map(jobs.map((j) => [j.id, j.status]));
     if (finished) {
-      for (const key of [["photos"], ["photo"], ["dashboard"], ["imports"], ["categories"], ["sequence"], ["exports"], ["review"], ["eval"], ["system"], ["metrics"], ["measure-summary"], ["measure-series"], ["snap-zip"]]) {
+      for (const key of [["photos"], ["photo"], ["dashboard"], ["imports"], ["categories"], ["sequence"], ["exports"], ["review"], ["eval"], ["system"], ["metrics"], ["measure-summary"], ["measure-series"], ["snap-zip"], ["people"]]) {
         qc.invalidateQueries({ queryKey: key });
       }
     }

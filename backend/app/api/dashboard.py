@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 from ..db import get_session
 from ..models import Alignment, ImportCandidate, Job, Metric, MetricEntry, Photo, PoseCategory
 from ..schemas import category_out, photo_out
+from ..services.people import summary as people_summary
 from .abs import summary as abs_summary
 from .faces import summary as face_summary
 
@@ -85,6 +86,7 @@ def dashboard(s: Session = Depends(get_session)) -> dict[str, Any]:
         "categories": [{**category_out(c, per_pose.get(c.id, 0)), "cover": _cover(s, c)} for c in cats],
         "abs": {**abs_summary(s), "cover_url": _closeup_cover(s, Photo.abs_visible, "abs")},
         "face": {**face_summary(s), "cover_url": _closeup_cover(s, Photo.face_visible, "face")},
+        "people": people_summary(s),
         "date_span": {"first": first.isoformat() if first else None, "last": last.isoformat() if last else None},
         "latest": [photo_out(p) for p in latest],
         "weight": weight,

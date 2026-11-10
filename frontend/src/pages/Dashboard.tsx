@@ -188,6 +188,16 @@ export default function Dashboard() {
                 ) : undefined
               }
             />
+            <Stat
+              label="Not you"
+              value={data.people.me_examples ? data.people.not_me : "–"}
+              tone={data.people.not_me ? "warn" : undefined}
+              sub={
+                <Link to="/people" className="underline">
+                  {data.people.me_examples ? (data.people.unsure ? `${data.people.unsure} to check · filter people` : "filter people") : "set up filter people"}
+                </Link>
+              }
+            />
             {data.weight && (
               <Stat
                 label={`Weight (${data.weight.unit})`}

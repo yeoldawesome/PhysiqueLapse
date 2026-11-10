@@ -14,7 +14,7 @@ from .models import Metric, PoseCategory, Setting
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _engine = None
 
@@ -109,6 +109,12 @@ _MIGRATIONS: dict[int, list[str]] = {
         "ALTER TABLE photos ADD COLUMN face_score FLOAT",
         "ALTER TABLE photos ADD COLUMN face_source VARCHAR DEFAULT 'none'",
         "ALTER TABLE photos ADD COLUMN face_version INTEGER",
+    ],
+    8: [
+        "ALTER TABLE photos ADD COLUMN person_label VARCHAR",
+        "ALTER TABLE photos ADD COLUMN person_status VARCHAR",
+        "ALTER TABLE photos ADD COLUMN person_score FLOAT",
+        "CREATE INDEX IF NOT EXISTS ix_photos_person_status ON photos (person_status)",
     ],
 }
 

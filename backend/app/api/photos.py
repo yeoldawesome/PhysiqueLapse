@@ -76,6 +76,7 @@ def list_photos(
     abs: str | None = None,
     sleeves: str | None = None,
     face: str | None = None,
+    person: str | None = None,
     q: str | None = None,
     sort: str = "taken_at_desc",
     page: int = 1,
@@ -117,6 +118,10 @@ def list_photos(
         conds.append(Photo.abs_visible == True)  # noqa: E712
     elif abs == "hidden":
         conds.append(Photo.abs_visible == False)  # noqa: E712
+    if person == "unscanned":
+        conds.append(Photo.person_status.is_(None))
+    elif person in ("me", "not_me", "unsure", "no_face"):
+        conds.append(Photo.person_status == person)
     if face == "visible":
         conds.append(Photo.face_visible == True)  # noqa: E712
     if sleeves == "hide":  # photos whose arms are not covered (unchecked ones stay)

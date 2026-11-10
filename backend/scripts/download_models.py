@@ -1,6 +1,6 @@
 """Download the model files once, into data/models/. Idempotent.
 
-    python backend/scripts/download_models.py            # pose (heavy) + CLIP
+    python backend/scripts/download_models.py            # pose (heavy) + face + CLIP
     python backend/scripts/download_models.py --pose all # lite, full and heavy
     python backend/scripts/download_models.py --no-clip
 
@@ -79,6 +79,12 @@ def main() -> int:
         except Exception as e:
             ok = False
             print(f"  FAILED  pose {v}: {e}")
+    for kind, url in config.FACE_MODEL_URLS.items():  # face detector + recognizer (Filter people)
+        try:
+            download(url, config.face_model_path(kind))
+        except Exception as e:
+            ok = False
+            print(f"  FAILED  face {kind}: {e}")
     if not args.no_clip:
         try:
             fetch_clip()

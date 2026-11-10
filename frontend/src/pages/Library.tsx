@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
-import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { Link, useSearchParams } from "react-router";
+import { ChevronLeft, ChevronRight, Search, UserX, X } from "lucide-react";
 import { useBulk, useCategories, useDashboard, usePatchPhoto, usePhotos, type PhotoFilters } from "../api/queries";
 import PoseActions from "../components/PoseActions";
 import PoseExamples from "../components/PoseExamples";
@@ -158,6 +158,9 @@ export default function Library() {
     <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col">
         <PageHeader title={poseTitle ?? "Library"} subtitle={data ? `${data.total} photos${isFetching ? " · refreshing" : ""}` : ""}>
+          <Link to="/people" className="btn" title="find photos that aren't of you and remove them">
+            <UserX size={14} /> Filter people
+          </Link>
           {poseKey != null && (
             <PoseActions
               poseId={poseKey}

@@ -2,6 +2,11 @@
 
 Newest first. Each entry says what was done, what was verified, and what is next, so a new session can resume.
 
+## 2026-11-10 — Filter people
+- New page Filter people (sidebar, Library header button, Dashboard "Not you" tile): scan finds the subject's face in each photo (OpenCV YuNet detector + SFace recognizer, models in data/models via download_models.py, ~38 MB, Apache-2.0; no new packages), step 1 asks which of the most common faces are you, then tabs Doesn't look like you / Not you / Face hidden / You / Your examples with select, That's me, Not me, Back to automatic, Delete selected and Delete all not-you. Scan also runs after Classify poses. Schema v8 (photos.person_label / person_status / person_score, table person_faces; DB backed up to the scratchpad as physiquelapse.before-v8.db).
+- Tested on the real photos before building: CLIP can't tell people apart (its outliers were the user in other clothes). SFace on 1,055 usable faces: with 10 examples, 142 faces scored < 0.25 and by eye nearly all were the user (cap over the eyes, looking down at the phone, steep angles); 200 varied examples brought that to 35. So a low score is never "not you" on its own: "Not you" = photos the user marked plus faces matching someone they marked; everything uncertain is listed for review. Best-match scoring (top 1), threshold 0.40.
+- Scan of the real library: 1,122 photos, 1,055 usable faces, 67 face hidden. Step 1 screen checked by screenshot; steps after it not clicked through (no labels set on the user's photos). 141 tests pass.
+
 ## 2026-11-10 — Export frame rate
 - Export window → Frame → Frame rate: auto (as before: 30 for MP4 / 15 for GIF, raised up to 60 / 50 when the photo speed needs it) or a fixed 24/25/30/50/60 (MP4) or 10–50 (GIF). Warns when photos per second exceed frames per second (some photos would get no frame). Length is unchanged by the frame rate. `ExportIn.frame_rate`; 139 tests pass.
 - Switched the working copy back to `main` (the `githubpages` branch pointed at the same commit; left in place).
