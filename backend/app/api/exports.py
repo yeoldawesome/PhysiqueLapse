@@ -33,6 +33,7 @@ class ExportIn(BaseModel):
     format: str = Field("mp4", pattern="^(mp4|gif)$")
     width: int | None = Field(None, ge=128, le=4096)
     crossfade: float = Field(0.0, ge=0, le=5)
+    max_pose_diff_pct: float | None = Field(None, gt=0, le=200)
     caption: CaptionIn = Field(default_factory=CaptionIn)
 
     model_config = {"populate_by_name": True}

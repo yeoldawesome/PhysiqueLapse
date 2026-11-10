@@ -43,7 +43,7 @@ def test_recovers_random_similarity(seed):
     tx, ty = float(rng.uniform(-300, 300)), float(rng.uniform(-300, 300))
     photo = transformed(ref, s, th, tx, ty)
     tr, flags, basis = A.solve(L.points_dict(photo), target, c, clamp_deg=8.0)
-    assert flags == {} and basis == "body"
+    assert flags == {} and basis == "joints"
     r = A.residuals(L.points_dict(photo), tr, target)
     T = target.lengths["torso"]
     assert r["head"] < 0.01
@@ -241,3 +241,22 @@ def test_align_job_editor_manual_and_eval(client, tmp_path):
         assert j["result"]["aligned"] == 3
     finally:
         set_backend_for_tests(None, key=None)
+
+
+def test_joints_fit_brings_arms_closer_than_body_fit():
+    """Same person, arms held a little higher than in the reference: fitting the arm joints
+    lands elbows/wrists closer (and is still a single rigid move, so sizes are unchanged)."""
+    ref = PF.front_double_bicep()
+    photo = transformed(ref, 1.1, 2.0, 15, -10)
+    for q in photo["points"]:
+        if "elbow" in q["name"] or "wrist" in q["name"]:
+            q["y_px"] -= 25
+    out = {}
+    for method in ("body", "joints"):
+        c = cat(align_method=method)
+        target = A.make_target(L.points_dict(ref), PF.W, PF.H, c, W, H)
+        tr, _, basis = A.solve(L.points_dict(photo), target, c, clamp_deg=15.0)
+        assert basis == method
+        out[method] = A.joint_match(L.points_dict(photo), tr, target)
+        assert tr.scale == pytest.approx(target.ref_transform.scale / 1.1, rel=0.05)
+    assert out["joints"] < 0.8 * out["body"]

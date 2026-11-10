@@ -15,7 +15,9 @@ from tests.conftest import make_image, save_image
 
 CATS = {
     "front_double_bicep": 1, "back_double_bicep": 2, "front_relaxed": 3, "side_left": 4, "side_right": 5,
-    "selfie_front": 7, "selfie_flex": 8, "selfie_side_down": 9, "selfie_side_90": 10, "front_lat_spread": 11, "other": 6,
+    "selfie_front_left": 7, "selfie_front_right": 12, "selfie_flex_left": 8, "selfie_flex_right": 13,
+    "selfie_side_down_left": 9, "selfie_side_down_right": 14, "selfie_side_90_left": 10, "selfie_side_90_right": 15,
+    "front_lat_spread": 11, "other": 6,
 }
 
 
@@ -28,13 +30,15 @@ CATS = {
         (PF.side_left, "side_left"),
         (lambda: PF.mirrored(PF.side_left()), "side_right"),
         (lambda: PF.mirrored(PF.front_double_bicep()), "front_double_bicep"),
-        (PF.selfie_front, "selfie_front"),
+        (PF.selfie_front, "selfie_front_left"),
+        (lambda: PF.mirrored(PF.selfie_front()), "selfie_front_right"),
         (PF.front_lat_spread, "front_lat_spread"),
-        (PF.selfie_side_down, "selfie_side_down"),
-        (PF.selfie_side_90, "selfie_side_90"),
-        (lambda: PF.mirrored(PF.selfie_side_90()), "selfie_side_90"),
-        (PF.selfie_flex, "selfie_flex"),
-        (lambda: PF.mirrored(PF.selfie_flex()), "selfie_flex"),
+        (PF.selfie_side_down, "selfie_side_down_right"),
+        (lambda: PF.mirrored(PF.selfie_side_down()), "selfie_side_down_left"),
+        (PF.selfie_side_90, "selfie_side_90_right"),
+        (lambda: PF.mirrored(PF.selfie_side_90()), "selfie_side_90_left"),
+        (PF.selfie_flex, "selfie_flex_right"),
+        (lambda: PF.mirrored(PF.selfie_flex()), "selfie_flex_left"),
     ],
 )
 def test_rules_classify_fixtures(fixture, expected):
@@ -211,3 +215,11 @@ def test_mediapipe_smoke_on_generated_image():
     rgb = np.asarray(make_image(640, 800, seed=1))
     poses = be.detect(rgb)
     assert isinstance(poses, list)  # a gradient has no person; the call itself must work
+
+
+def test_manual_photo_follows_its_side():
+    vec_right = F.compute(PF.selfie_side_90())  # rules say: right side
+    vec_left = F.compute(PF.mirrored(PF.selfie_side_90()))
+    assert C.side_sibling("selfie_side_90_left", vec_right, CATS) == CATS["selfie_side_90_right"]
+    assert C.side_sibling("selfie_side_90_left", vec_left, CATS) == CATS["selfie_side_90_left"]
+    assert C.side_sibling("front_double_bicep", vec_right, CATS) is None  # not a left/right pair

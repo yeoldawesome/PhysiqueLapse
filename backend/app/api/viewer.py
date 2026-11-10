@@ -37,9 +37,18 @@ def sequence(
         raise HTTPException(404, "pose category not found")
     settings = load_settings(s)
     photos = sequence_photos(s, cid, from_, to)
+    torso_canvas = None
+    try:
+        from ..services.align import category_context
+
+        torso_canvas = category_context(s, cat, settings, auto_pick=False).target.lengths["torso"]
+    except LookupError:
+        pass
     first = photos[0].taken_at if photos else None
+    from ..services.measure import frame_values
     from ..services.stats import stats_for_dates
 
+    meas = frame_values(s, [p.id for p in photos])
     stats = stats_for_dates(s, [p.taken_at.date() for p in photos], settings.stats_window_days, first.date() if first else None)
     frames, unaligned = [], 0
     for p, st in zip(photos, stats, strict=True):
@@ -60,6 +69,13 @@ def sequence(
                 "stale": bool(a.stale) if ok else True,
                 "flip_horizontal": p.flip_horizontal,
                 "stats": st,
+                "measurements": meas.get(p.id, {}),
+                # how far this photo's shoulders/elbows/wrists land from the reference's, in % of torso length
+                "pose_diff_pct": (
+                    round(100 * a.joint_residual_px / torso_canvas, 1)
+                    if ok and a.joint_residual_px is not None and torso_canvas
+                    else None
+                ),
             }
         )
     no_date = s.exec(

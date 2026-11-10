@@ -27,7 +27,10 @@ export default function MetricChart({
   markerDate,
   height = 160,
   onPick,
+  onPickIndex,
   title,
+  trend,
+  format,
 }: {
   points: Point[];
   unit: string;
@@ -35,7 +38,12 @@ export default function MetricChart({
   markerDate?: string | null;
   height?: number;
   onPick?: (date: string) => void;
+  /** index into `points` of the clicked point (dots mode) */
+  onPickIndex?: (index: number) => void;
   title?: string;
+  /** when given, `points` are drawn as dots (each photo) and `trend` as the line */
+  trend?: Point[];
+  format?: (v: number) => string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(600);
@@ -51,11 +59,16 @@ export default function MetricChart({
 
   const data = useMemo(
     () =>
-      [...points]
-        .map((p) => ({ ...p, t: parseLocal(p.date)!.getTime() }))
+      points
+        .map((p, i) => ({ ...p, i, t: parseLocal(p.date)!.getTime() }))
         .sort((a, b) => a.t - b.t),
     [points],
   );
+  const line = useMemo(
+    () => (trend ? trend.map((p) => ({ ...p, t: parseLocal(p.date)!.getTime() })).sort((a, b) => a.t - b.t) : data),
+    [trend, data],
+  );
+  const fmt = format ?? ((v: number) => v.toFixed(decimals));
   if (data.length === 0) {
     return (
       <div ref={ref} className="flex items-center justify-center text-xs text-muted" style={{ height }}>
@@ -80,9 +93,9 @@ export default function MetricChart({
   const ih = height - PAD.t - PAD.b;
   const x = (t: number) => PAD.l + ((t - t0) / (t1 - t0)) * iw;
   const y = (v: number) => PAD.t + (1 - (v - vmin) / (vmax - vmin)) * ih;
-  const path = data.map((d, i) => `${i ? "L" : "M"}${x(d.t).toFixed(1)},${y(d.value).toFixed(1)}`).join("");
+  const path = line.map((d, i) => `${i ? "L" : "M"}${x(d.t).toFixed(1)},${y(d.value).toFixed(1)}`).join("");
   const ticks = niceTicks(vmin, vmax);
-  const showDots = data.length <= 60;
+  const showDots = !!trend || data.length <= 60;
   const h = hover != null ? data[hover] : null;
 
   const nearestIdx = (px: number) => {
@@ -105,11 +118,13 @@ export default function MetricChart({
         }}
         onMouseLeave={() => setHover(null)}
         onClick={(e) => {
-          if (!onPick) return;
+          if (!onPick && !onPickIndex) return;
           const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
-          onPick(data[nearestIdx(e.clientX - r.left)].date);
+          const k = nearestIdx(e.clientX - r.left);
+          onPick?.(data[k].date);
+          onPickIndex?.(data[k].i);
         }}
-        style={{ cursor: onPick ? "pointer" : "default" }}
+        style={{ cursor: onPick || onPickIndex ? "pointer" : "default" }}
         role="img"
         aria-label={`${title ?? "metric"} over time`}
       >
@@ -117,7 +132,7 @@ export default function MetricChart({
           <g key={v}>
             <line x1={PAD.l} x2={PAD.l + iw} y1={y(v)} y2={y(v)} stroke="var(--color-border)" strokeWidth={1} />
             <text x={PAD.l - 6} y={y(v) + 3} textAnchor="end" fontSize={10} fill="var(--color-muted)">
-              {v.toFixed(Math.max(0, decimals - 1))}
+              {format ? fmt(v) : v.toFixed(Math.max(0, decimals - 1))}
             </text>
           </g>
         ))}
@@ -129,7 +144,18 @@ export default function MetricChart({
         </text>
         <path d={path} fill="none" stroke="var(--color-accent)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
         {showDots &&
-          data.map((d) => <circle key={d.date} cx={x(d.t)} cy={y(d.value)} r={3} fill="var(--color-accent)" stroke="var(--color-panel)" strokeWidth={2} />)}
+          data.map((d) => (
+            <circle
+              key={`${d.date}-${d.i}`}
+              cx={x(d.t)}
+              cy={y(d.value)}
+              r={trend ? 4 : 3}
+              fill="var(--color-accent)"
+              fillOpacity={trend ? 0.45 : 1}
+              stroke="var(--color-panel)"
+              strokeWidth={trend ? 1 : 2}
+            />
+          ))}
         {markerT != null && (
           <line x1={x(markerT)} x2={x(markerT)} y1={PAD.t} y2={PAD.t + ih} stroke="var(--color-warn)" strokeWidth={2} strokeDasharray="3 3" />
         )}
@@ -146,7 +172,7 @@ export default function MetricChart({
           style={{ left: Math.min(x(h.t) + 8, w - 130), top: (title ? 18 : 0) + Math.max(0, y(h.value) - 34) }}
         >
           <div className="font-medium tabular-nums text-text">
-            {h.value.toFixed(decimals)} {unit}
+            {fmt(h.value)} {unit}
           </div>
           <div className="text-muted">{fmtDate(h.date)}</div>
         </div>

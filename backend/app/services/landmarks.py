@@ -116,13 +116,19 @@ def _largest(poses: list[list[Point]]) -> list[Point]:
     return max(poses, key=area)
 
 
-def detect_image(rgb: np.ndarray, *, variant: str, tta: bool, num_poses: int = 1) -> tuple[list[Point] | None, int]:
-    """Return (pose in rgb pixel coords or None, number of people seen)."""
+def detect_image(rgb: np.ndarray, *, variant: str, tta: bool, num_poses: int = 1) -> tuple[list[Point] | None, int, np.ndarray | None]:
+    """Return (pose in rgb pixel coords or None, number of people seen, body-outline mask or None)."""
     be = get_backend(variant)
-    poses = be.detect(rgb, num_poses=num_poses)
+    with_masks = getattr(be, "detect_with_masks", None)
+    if with_masks is not None:
+        poses, masks = with_masks(rgb, num_poses=num_poses)
+    else:
+        poses, masks = be.detect(rgb, num_poses=num_poses), []
     if not poses:
-        return None, 0
+        return None, 0, None
     main = _largest(poses)
+    i = next(k for k, p in enumerate(poses) if p is main)
+    mask = masks[i] if i < len(masks) else None
     if tta:
         w = rgb.shape[1]
         mposes = be.detect(np.ascontiguousarray(rgb[:, ::-1]), num_poses=1)
@@ -139,7 +145,7 @@ def detect_image(rgb: np.ndarray, *, variant: str, tta: bool, num_poses: int = 1
                 )
                 for a, b in zip(main, m, strict=True)
             ]
-    return main, len(poses)
+    return main, len(poses), mask
 
 
 def extract_for_photo(photo: Photo, *, variant: str, long_side: int, tta: bool) -> dict[str, Any]:
@@ -150,9 +156,13 @@ def extract_for_photo(photo: Photo, *, variant: str, long_side: int, tta: bool) 
         small = images.resize_long_side(img, long_side)
         sx, sy = W / small.width, H / small.height
         rgb = np.asarray(small)
-        pose, n = detect_image(rgb, variant=variant, tta=tta)
+        pose, n, mask = detect_image(rgb, variant=variant, tta=tta)
     finally:
         img.close()
+    if mask is not None:
+        from .measure import save_mask
+
+        save_mask(photo.id, mask)
     data: dict[str, Any] = {"model": f"mediapipe-pose-{variant}", "image_w": W, "image_h": H, "detected": False, "num_people": n, "points": []}
     if pose is not None:
         data["detected"] = True
@@ -208,6 +218,13 @@ def job_extract_landmarks(ctx: JobContext, params: dict) -> dict:
             feats = s.get(PoseFeatures, pid)
             if feats is not None:
                 s.delete(feats)
+            if photo.landmarks_status == "ok":
+                try:
+                    from .measure import compute_for_photo
+
+                    compute_for_photo(s, photo, redetect=False)
+                except Exception as e:  # measurements are a bonus; never fail landmarking for them
+                    log.warning("measure failed for photo %s: %s", pid, e)
             a = s.get(Alignment, pid)
             if a is not None and a.method == "auto":
                 a.stale = True

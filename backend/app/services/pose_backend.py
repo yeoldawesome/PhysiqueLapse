@@ -118,8 +118,8 @@ class MediaPipeBackend:
         self._lock = threading.Lock()
         self._buf = self.path.read_bytes()
 
-    def _get(self, num_poses: int):
-        lm = self._landmarkers.get(num_poses)
+    def _get(self, num_poses: int, masks: bool = False):
+        lm = self._landmarkers.get((num_poses, masks))
         if lm is None:
             from mediapipe.tasks import python as mp_python
             from mediapipe.tasks.python import vision
@@ -131,19 +131,24 @@ class MediaPipeBackend:
                 min_pose_detection_confidence=0.5,
                 min_pose_presence_confidence=0.5,
                 min_tracking_confidence=0.5,
-                output_segmentation_masks=False,
+                output_segmentation_masks=masks,
             )
             lm = vision.PoseLandmarker.create_from_options(opts)
-            self._landmarkers[num_poses] = lm
+            self._landmarkers[(num_poses, masks)] = lm
         return lm
 
     def detect(self, rgb: np.ndarray, num_poses: int = 1) -> list[list[Point]]:
+        return self.detect_with_masks(rgb, num_poses, masks=False)[0]
+
+    def detect_with_masks(self, rgb: np.ndarray, num_poses: int = 1, masks: bool = True) -> tuple[list[list[Point]], list[np.ndarray | None]]:
+        """Poses plus, per pose, a body-outline probability mask (HxW float, same size as rgb)."""
         import mediapipe as mp
 
         h, w = rgb.shape[:2]
         img = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb, dtype=np.uint8))
         with self._lock:
-            res = self._get(num_poses).detect(img)
+            res = self._get(num_poses, masks).detect(img)
+            seg = [np.array(m.numpy_view(), dtype=np.float32).squeeze() for m in (res.segmentation_masks or [])] if masks else []
         out: list[list[Point]] = []
         for pose in res.pose_landmarks or []:
             pts = []
@@ -159,7 +164,9 @@ class MediaPipeBackend:
                     )
                 )
             out.append(pts)
-        return out
+        if masks:
+            return out, [seg[i] if i < len(seg) else None for i in range(len(out))]
+        return out, [None] * len(out)
 
     def close(self) -> None:
         for lm in self._landmarkers.values():

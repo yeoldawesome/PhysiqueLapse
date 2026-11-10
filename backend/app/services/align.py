@@ -171,7 +171,7 @@ def make_target(ref_points: dict[str, dict], ref_w: int, ref_h: int, cat: PoseCa
         eye_mid=tr.apply(a.eye_mid),
         lengths={b: tr.scale * a.length(b) for b in ("torso", "nose_hip", "head")},
         angles={b: a.angle(b) for b in ("torso", "eyes", "shoulders", "none")},
-        points={n: (tr.apply(_xy(ref_points[n])), float(ref_points[n]["visibility"])) for n in FIT_WEIGHTS if n in ref_points},
+        points={n: (tr.apply(_xy(ref_points[n])), float(ref_points[n]["visibility"])) for n in ALL_FIT_POINTS if n in ref_points},
     )
 
 
@@ -189,6 +189,41 @@ FIT_WEIGHTS = {
     "right_hip": 1.5,
 }
 TORSO_POINTS = ("left_shoulder", "right_shoulder", "left_hip", "right_hip")
+
+# Joints fit: the arms define these poses, so shoulders, elbows and wrists are fitted too
+# (still one rigid move: the photo is never warped, so sizes stay true).
+JOINT_FIT_WEIGHTS = {
+    "nose": 0.5,
+    "left_eye": 0.25,
+    "right_eye": 0.25,
+    "left_ear": 0.25,
+    "right_ear": 0.25,
+    "left_shoulder": 2.0,
+    "right_shoulder": 2.0,
+    "left_elbow": 1.5,
+    "right_elbow": 1.5,
+    "left_wrist": 1.0,
+    "right_wrist": 1.0,
+    "left_hip": 1.0,
+    "right_hip": 1.0,
+}
+ARM_JOINTS = ("left_shoulder", "right_shoulder", "left_elbow", "right_elbow", "left_wrist", "right_wrist")
+ALL_FIT_POINTS = tuple(dict.fromkeys([*FIT_WEIGHTS, *JOINT_FIT_WEIGHTS]))
+
+
+def weights_for(method: str | None) -> dict[str, float]:
+    return JOINT_FIT_WEIGHTS if (method or "joints") == "joints" else FIT_WEIGHTS
+
+
+def joint_match(points: dict[str, dict], tr: Transform, target: Target) -> float | None:
+    """Mean canvas distance (px) between this photo's shoulders/elbows/wrists and the
+    reference's after alignment: how closely the pose itself matches. None if < 3 shared."""
+    d = [
+        float(np.linalg.norm(tr.apply(_xy(points[n])) - target.points[n][0]))
+        for n in ARM_JOINTS
+        if n in points and n in target.points and points[n]["visibility"] >= VIS and target.points[n][1] >= VIS
+    ]
+    return float(np.mean(d)) if len(d) >= 3 else None
 
 
 def fit_similarity(src: np.ndarray, dst: np.ndarray, w: np.ndarray, clamp_deg: float | None) -> tuple[Transform, float]:
@@ -211,16 +246,19 @@ def fit_similarity(src: np.ndarray, dst: np.ndarray, w: np.ndarray, clamp_deg: f
     return Transform(s, theta, float(t[0]), float(t[1])), theta_free
 
 
-def solve_body(points: dict[str, dict], target: Target, clamp_deg: float, use_rotation: bool) -> tuple[Transform, dict[str, Any]] | None:
+def solve_body(
+    points: dict[str, dict], target: Target, clamp_deg: float, use_rotation: bool, weights: dict[str, float] | None = None
+) -> tuple[Transform, dict[str, Any]] | None:
+    weights = weights or FIT_WEIGHTS
     names = [
-        n for n in FIT_WEIGHTS
+        n for n in weights
         if n in points and n in target.points and points[n]["visibility"] >= VIS and target.points[n][1] >= VIS
     ]
     if len(names) < 3 or sum(1 for n in names if n in TORSO_POINTS) < 2:
         return None  # not enough shared, visible points: caller falls back to the head anchor
     src = np.array([_xy(points[n]) for n in names])
     dst = np.array([target.points[n][0] for n in names])
-    w = np.array([FIT_WEIGHTS[n] for n in names])
+    w = np.array([weights[n] for n in names])
     tr, free = fit_similarity(src, dst, w, clamp_deg if use_rotation else 0.0)
     flags: dict[str, Any] = {}
     if use_rotation and abs(free) > clamp_deg:
@@ -232,13 +270,14 @@ def solve_body(points: dict[str, dict], target: Target, clamp_deg: float, use_ro
 
 def solve(points: dict[str, dict], target: Target, cat: PoseCategory, clamp_deg: float) -> tuple[Transform, dict[str, Any], str]:
     """Auto solve. Returns (transform, flags, scale_basis_used)."""
-    if (cat.align_method or "body") == "body":
-        res = solve_body(points, target, clamp_deg, use_rotation=cat.rotation_basis != "none")
+    method = cat.align_method or "joints"
+    if method in ("body", "joints"):
+        res = solve_body(points, target, clamp_deg, use_rotation=cat.rotation_basis != "none", weights=weights_for(method))
         if res is not None:
             tr, flags = res
             if sum(1 for n in HEAD_POINTS["auto"] if points[n]["visibility"] >= VIS) < 2:
                 flags["low_anchor_confidence"] = True
-            return tr, flags, "body"
+            return tr, flags, method
     a = anchors(points, cat.anchor_mode)
     flags: dict[str, Any] = {}
     basis = cat.scale_basis
@@ -286,6 +325,8 @@ def residuals(points: dict[str, dict], tr: Transform, target: Target, anchor_mod
         "eye_mid": float(np.linalg.norm(tr.apply(a.eye_mid) - target.eye_mid)),
     }
     out["mean"] = float(np.mean([out["shoulder_mid"], out["hip_mid"], out["eye_mid"]]))
+    j = joint_match(points, tr, target)
+    out["joints"] = j if j is not None else out["mean"]
     return out
 
 
@@ -350,15 +391,16 @@ class CategoryContext:
     errors: list[str] = field(default_factory=list)
 
 
-def _fit_cost(src: dict[str, dict], ref: dict[str, dict], clamp_deg: float) -> float | None:
+def _fit_cost(src: dict[str, dict], ref: dict[str, dict], clamp_deg: float, weights: dict[str, float] | None = None) -> float | None:
     """Leftover error (in reference torso lengths) after fitting `src` onto `ref` with the
     body fit and the rotation clamp. None when the two share too few visible points."""
-    names = [n for n in FIT_WEIGHTS if n in src and n in ref and src[n]["visibility"] >= VIS and ref[n]["visibility"] >= VIS]
+    weights = weights or FIT_WEIGHTS
+    names = [n for n in weights if n in src and n in ref and src[n]["visibility"] >= VIS and ref[n]["visibility"] >= VIS]
     if len(names) < 3 or sum(1 for n in names if n in TORSO_POINTS) < 2:
         return None
     P = np.array([_xy(src[n]) for n in names])
     Q = np.array([_xy(ref[n]) for n in names])
-    w = np.array([FIT_WEIGHTS[n] for n in names])
+    w = np.array([weights[n] for n in names])
     tr, _ = fit_similarity(P, Q, w, clamp_deg)
     resid = np.linalg.norm((P @ tr.M.T + tr.t) - Q, axis=1)
     T = anchors(ref).torso or 1.0
@@ -390,7 +432,7 @@ def pick_default_reference(s: Session, cat: PoseCategory, clamp_deg: float = 8.0
         return good[0]
     best, best_cost = pts[0][0], math.inf
     for p, ref in pts:
-        costs = [_fit_cost(q, ref, clamp_deg) for o, q in pts if o.id != p.id]
+        costs = [_fit_cost(q, ref, clamp_deg, weights_for(cat.align_method)) for o, q in pts if o.id != p.id]
         costs = [c if c is not None else 1.0 for c in costs]  # can't fit -> heavy penalty
         cost = float(np.sum(np.minimum(costs, 1.0)))  # one wild photo can't dominate
         if cost < best_cost - 1e-9:
@@ -462,9 +504,11 @@ def align_photo(s: Session, photo: Photo, cc: CategoryContext, *, keep_manual: b
                 tr = fit_transform(photo.width, photo.height, W, H)
                 flags["no_landmarks"] = True
     resid = None
+    jres = None
     data = L.load_for_photo(photo)
     if data and data.get("detected"):
         resid = residuals(L.points_dict(data), tr, cc.target, cc.cat.anchor_mode)["mean"]
+        jres = 0.0 if photo.id == cc.reference.id else joint_match(L.points_dict(data), tr, cc.target)
     canvas = render(photo, tr, W, H, bg_removal=cc.settings.bg_removal)
     a.output_path = write_output(photo.id, canvas)
     a.reference_photo_id = cc.reference.id
@@ -475,6 +519,7 @@ def align_photo(s: Session, photo: Photo, cc: CategoryContext, *, keep_manual: b
     a.scale_basis_used = basis_used
     a.flags = flags
     a.residual_px = round(resid, 2) if resid is not None else None
+    a.joint_residual_px = round(jres, 2) if jres is not None else None
     a.stale = False
     a.computed_at = now()
     s.add(a)
@@ -595,7 +640,7 @@ def evaluate_category(s: Session, cat: PoseCategory, settings: AppSettings) -> d
         "reference_photo_id": cc.reference.id,
         "canvas": [settings.canvas_w, H],
         "n": len(rows),
-        "summary": {k: stats(k) for k in ("mean", "shoulder_mid", "hip_mid", "eye_mid", "head")},
+        "summary": {k: stats(k) for k in ("mean", "joints", "shoulder_mid", "hip_mid", "eye_mid", "head")},
         "flags": flag_counts,
         "rows": rows,
     }

@@ -9,6 +9,7 @@ import { Empty, PageHeader, Spinner, Toggle } from "../components/ui";
 import MetricChart from "../components/MetricChart";
 import ExportDialog from "../components/ExportDialog";
 import { useShortcuts } from "../lib/keyboard";
+import { fmtRatio } from "../components/PhotoMeasurements";
 import { fmtDate, toDateValue } from "../lib/format";
 
 type Mode = "single" | "onion" | "split";
@@ -88,7 +89,28 @@ export default function Viewer() {
     queryFn: () => get<Sequence>(`/poses/${poseId}/sequence`, { from, to }),
     enabled: !!poseId,
   });
-  const frames = useMemo(() => seq.data?.frames ?? [], [seq.data]);
+  const [maxDiff, setMaxDiff] = useState<number | null>(() => {
+    try {
+      const v = localStorage.getItem("pl.poseMatch");
+      return v ? Number(v) : null;
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    try {
+      if (maxDiff == null) localStorage.removeItem("pl.poseMatch");
+      else localStorage.setItem("pl.poseMatch", String(maxDiff));
+    } catch {
+      /* ignore */
+    }
+  }, [maxDiff]);
+  const allFrames = useMemo(() => seq.data?.frames ?? [], [seq.data]);
+  const frames = useMemo(
+    () => (maxDiff == null ? allFrames : allFrames.filter((f) => f.pose_diff_pct == null || f.pose_diff_pct <= maxDiff)),
+    [allFrames, maxDiff],
+  );
+  const hidden = allFrames.length - frames.length;
   const [index, setIndex] = useState(0);
   const [compare, setCompare] = useState(0);
   const [mode, setMode] = useState<Mode>("single");
@@ -325,6 +347,26 @@ export default function Viewer() {
               <div className="mt-2">
                 <StatsStrip frame={cur} />
               </div>
+              {cur && Object.keys(cur.measurements ?? {}).length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-x-5 text-xs text-muted" title="estimated from this photo: widths as % of torso length (Stats → From photos)">
+                  {(
+                    [
+                      ["shoulders", "shoulders"],
+                      ["lats", "lats"],
+                      ["waist", "waist"],
+                      ["vtaper", "V-taper"],
+                      ["arm", "upper arm"],
+                      ["forearm", "forearm"],
+                    ] as const
+                  )
+                    .filter(([k]) => cur.measurements[k] != null)
+                    .map(([k, label]) => (
+                      <span key={k}>
+                        {label} <span className="tabular-nums text-text">{fmtRatio(k, cur.measurements[k])}</span>
+                      </span>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -369,6 +411,21 @@ export default function Viewer() {
                 )}
               </div>
             )}
+            <div className="flex flex-col gap-1.5">
+              <span className="label">Pose match</span>
+              <select className="select" value={maxDiff ?? ""} onChange={(e) => setMaxDiff(e.target.value === "" ? null : Number(e.target.value))}>
+                <option value="">all photos</option>
+                <option value="12">close (joints within 12% of torso length)</option>
+                <option value="8">closer (within 8%)</option>
+                <option value="5">very close (within 5%)</option>
+                <option value="3">nearly identical (within 3%)</option>
+              </select>
+              <span className="text-[11px] text-muted">
+                {hidden > 0 ? `${hidden} photo${hidden === 1 ? "" : "s"} hidden because the arms are posed differently from the reference. ` : ""}
+                Measures how far shoulders, elbows and wrists land from the reference after alignment.
+                {cur?.pose_diff_pct != null ? ` This photo: ${cur.pose_diff_pct}%.` : ""}
+              </span>
+            </div>
             <div className="flex flex-col gap-2">
               <span className="label">Playback</span>
               <label className="flex items-center gap-2">
@@ -434,7 +491,7 @@ export default function Viewer() {
         </div>
       )}
       {poseId && (
-        <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} poseId={poseId} from={from} to={to} defaultFps={fps} />
+        <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} poseId={poseId} from={from} to={to} defaultFps={fps} maxPoseDiff={maxDiff} />
       )}
     </div>
   );

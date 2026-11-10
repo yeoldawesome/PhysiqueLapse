@@ -25,7 +25,7 @@ class PoseCategory(SQLModel, table=True):
     anchor_mode: str = "auto"  # auto|face|ears
     scale_basis: str = "torso"  # torso|nose_hip|head
     rotation_basis: str = "torso"  # torso|eyes|shoulders|none
-    align_method: str | None = "body"  # body (weighted fit over head+shoulders+hips) | head (pin the head exactly)
+    align_method: str | None = "joints"  # joints (fit incl. elbows+wrists) | body (head+shoulders+hips) | head (pin the head)
     normalize_facing: bool = False
     framing_zoom: float = 1.0
     framing_dx: float = 0.0
@@ -101,8 +101,21 @@ class Alignment(SQLModel, table=True):
     scale_basis_used: str = "torso"  # torso|nose_hip|head|fit
     flags: dict = Field(default_factory=dict, sa_column=Column(JSON))
     residual_px: float | None = None
+    joint_residual_px: float | None = None  # mean shoulder/elbow/wrist distance to the reference (pose match)
     output_path: str | None = None
     stale: bool = False
+    computed_at: NaiveDatetime = Field(default_factory=now)
+
+
+class PhotoMeasurement(SQLModel, table=True):
+    """Body-size estimates from one photo (see services/measure.py). data = {name: {valid, ratio, px, line, why}}."""
+
+    __tablename__ = "photo_measurements"
+
+    photo_id: int = Field(primary_key=True, foreign_key="photos.id")
+    version: int = 1
+    torso_px: float | None = None
+    data: dict = Field(default_factory=dict, sa_column=Column(JSON))
     computed_at: NaiveDatetime = Field(default_factory=now)
 
 

@@ -46,6 +46,7 @@ class AppSettings(BaseModel):
     # stats
     units: Literal["lb", "kg"] = "lb"
     stats_window_days: int = 7
+    measure_smooth_days: int = 21  # trend window for photo measurements
     # time
     timezone: str = "local"  # IANA name or "local"
     # dedupe

@@ -18,6 +18,7 @@ export default function ExportDialog({
   from,
   to,
   defaultFps,
+  maxPoseDiff,
 }: {
   open: boolean;
   onClose: () => void;
@@ -25,6 +26,7 @@ export default function ExportDialog({
   from?: string;
   to?: string;
   defaultFps: number;
+  maxPoseDiff?: number | null;
 }) {
   const qc = useQueryClient();
   const metrics = useQuery({ queryKey: ["metrics"], queryFn: () => get<Metric[]>("/metrics") });
@@ -50,6 +52,7 @@ export default function ExportDialog({
         width: format === "gif" ? Math.min(width, 720) : width,
         crossfade,
         caption: { date: capDate, days: capDays, metrics: capMetrics },
+        max_pose_diff_pct: maxPoseDiff ?? null,
       });
       toast.info("Export started");
       qc.invalidateQueries({ queryKey: ["jobs"] });
@@ -100,7 +103,8 @@ export default function ExportDialog({
         ))}
       </div>
       <div className="mt-2 text-xs text-muted">
-        Range: {from || "first photo"} → {to || "last photo"}. Only aligned photos are included. Rendering runs in the background.
+        Range: {from || "first photo"} → {to || "last photo"}. Only aligned photos are included
+        {maxPoseDiff != null ? `, and only those whose pose is within ${maxPoseDiff}% of the reference (the Viewer's pose-match setting)` : ""}. Rendering runs in the background.
       </div>
       <div className="mt-3 flex justify-end">
         <button className="btn btn-primary" onClick={start} disabled={busy || fps <= 0}>

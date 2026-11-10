@@ -388,6 +388,7 @@ export default function Editor() {
               Status: <span className="text-text">{ctx.current ? ctx.current.method : "not aligned"}</span>
               {ctx.current?.stale && <span className="text-warn"> · out of date</span>}
               {ctx.current?.residual_px != null && <span> · residual {ctx.current.residual_px.toFixed(1)} px</span>}
+              {ctx.current?.joint_residual_px != null && <span> · joints off by {ctx.current.joint_residual_px.toFixed(0)} px</span>}
             </div>
             {flags.length > 0 && <div className="text-warn">{flags.map((f) => f.replace(/_/g, " ")).join(", ")}</div>}
           </div>

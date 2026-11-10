@@ -20,7 +20,8 @@ function CategoryRow({ c }: { c: Category }) {
       </td>
       <td className="px-3 py-2">
         <select className="select" value={c.align_method} onChange={(e) => u({ align_method: e.target.value as Category["align_method"] })}>
-          <option value="body">body fit</option>
+          <option value="joints">joints (arms too)</option>
+          <option value="body">body (torso + head)</option>
           <option value="head">pin head</option>
         </select>
       </td>

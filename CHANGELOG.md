@@ -2,6 +2,18 @@
 
 Newest first. Each entry says what was done, what was verified, and what is next, so a new session can resume.
 
+## 2026-11-09 — Session 2 (cont.): joint alignment, pose match, left/right groups
+- Alignment now fits shoulders, elbows and wrists too (default "joints"); elbow/wrist landing error dropped 1.3–4× on the real photos. No image warping (it would fake size changes).
+- Pose-match score per photo + Viewer/Export filter; mirror-selfie groups split into left/right by real side; hand-assigned photos follow their side.
+- Schema v4 (DB backed up beforehand to the session scratchpad as physiquelapse.before-v4.db). 125 tests pass; frontend builds; aligned frames checked by eye with reference joints overlaid.
+- Next: user review; photo #116 (group shot) is still classified as a double bicep and should be moved to Other.
+
+## 2026-11-09 — Session 2 (cont.): body sizes from photos
+- New: body-outline masks + size estimates (shoulders, lats, waist, V-taper, upper arm, forearm) relative to torso length, per pose type, with trend lines and optional inch calibration from tape measurements. Stats → From photos; drawer "sizes" overlay; Viewer strip.
+- Verified on the 119 real photos: same-day noise 1–3 % for the main sizes in their preferred poses (table in PLAN.md); overlays checked by eye; 122 tests pass; ruff clean; frontend builds.
+- Fixed while verifying: numpy bool not JSON-serializable (rows silently missing), forearm measured on the phone hand / merged with the hip, shoulder width accepted with an arm raised along the shoulder line.
+- Next: user review in the browser; log a few tape measurements (Arm, Waist) to switch the charts to inches.
+
 ## 2026-11-09 — Session 2 (cont.): Snapchat zip upload + physique filter
 - Import page accepts the Snapchat export zips (upload or by path); job unpacks photos only and runs the physique filter; Resume after failure; "Free space" cleanup.
 - Fixed CLIP loading on deep paths (flat weights file) and imports stuck in "running" after a failure or restart.

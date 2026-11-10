@@ -14,7 +14,7 @@ from .models import Metric, PoseCategory, Setting
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _engine = None
 
@@ -87,6 +87,11 @@ _MIGRATIONS: dict[int, list[str]] = {
     # version -> SQL statements that bring a database from version-1 to version
     2: ["ALTER TABLE import_candidates ADD COLUMN prev_decision VARCHAR"],
     3: ["ALTER TABLE pose_categories ADD COLUMN align_method VARCHAR DEFAULT 'body'"],
+    4: [
+        "ALTER TABLE alignments ADD COLUMN joint_residual_px FLOAT",
+        "UPDATE pose_categories SET align_method = 'joints' WHERE align_method IS NULL OR align_method = 'body'",
+        "UPDATE alignments SET stale = 1",
+    ],
 }
 
 
@@ -132,23 +137,40 @@ BUILTIN_CATEGORIES: list[tuple[str, str, str]] = [
     ("Front Lat Spread", "front_lat_spread", "auto"),
     ("Side Arm Down Flex - Left", "side_left", "auto"),
     ("Side Arm Down Flex - Right", "side_right", "auto"),
-    ("Mirror Selfie - Front", "selfie_front", "auto"),
-    ("Mirror Selfie - Flex", "selfie_flex", "auto"),
-    ("Mirror Selfie - Side (Arm Down)", "selfie_side_down", "auto"),
-    ("Mirror Selfie - Side (Arm 90)", "selfie_side_90", "auto"),
+    ("Mirror Selfie - Front (Phone in Left Hand)", "selfie_front_left", "auto"),
+    ("Mirror Selfie - Front (Phone in Right Hand)", "selfie_front_right", "auto"),
+    ("Mirror Selfie - Flex (Left Arm)", "selfie_flex_left", "auto"),
+    ("Mirror Selfie - Flex (Right Arm)", "selfie_flex_right", "auto"),
+    ("Mirror Selfie - Side (Arm Down) - Left Side", "selfie_side_down_left", "auto"),
+    ("Mirror Selfie - Side (Arm Down) - Right Side", "selfie_side_down_right", "auto"),
+    ("Mirror Selfie - Side (Arm 90) - Left Side", "selfie_side_90_left", "auto"),
+    ("Mirror Selfie - Side (Arm 90) - Right Side", "selfie_side_90_right", "auto"),
     ("Other", "other", "auto"),
 ]
 
 
 def _seed(s: Session) -> None:
     # renamed / split built-ins: the old single side-selfie category becomes "arm down"
-    for old_key, new_key, old_name in (("selfie_side", "selfie_side_down", "Mirror Selfie - Side"),):
+    # (old key, new key, old default name). Split categories keep their photos for now; the next
+    # "Classify poses" moves automatically-classified photos to the correct side. The reference
+    # is cleared because it may show the other side.
+    renames = (
+        ("selfie_side", "selfie_side_down", "Mirror Selfie - Side"),
+        ("selfie_side_down", "selfie_side_down_right", "Mirror Selfie - Side (Arm Down)"),
+        ("selfie_side_90", "selfie_side_90_right", "Mirror Selfie - Side (Arm 90)"),
+        ("selfie_flex", "selfie_flex_right", "Mirror Selfie - Flex"),
+        ("selfie_front", "selfie_front_right", "Mirror Selfie - Front"),
+    )
+    for old_key, new_key, old_name in renames:
         c = s.exec(select(PoseCategory).where(PoseCategory.rule_key == old_key)).first()
-        if c is not None:
+        if c is not None and not s.exec(select(PoseCategory).where(PoseCategory.rule_key == new_key)).first():
             c.rule_key = new_key
             if c.name == old_name:
-                c.name = next(n for n, k, _ in BUILTIN_CATEGORIES if k == new_key)
+                c.name = next((n for n, k, _ in BUILTIN_CATEGORIES if k == new_key), c.name)
+            if old_key != "selfie_side":
+                c.reference_photo_id = None
             s.add(c)
+            s.flush()
     s.flush()
     # insert built-in categories that are missing (new ones are added to existing libraries too)
     have = {c.rule_key: c for c in s.exec(select(PoseCategory)).all() if c.rule_key}

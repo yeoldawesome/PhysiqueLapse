@@ -20,7 +20,7 @@ def _register_job_handlers() -> None:
     """Import every service module that defines @job handlers."""
     from .services import ingest  # noqa: F401
 
-    for name in ("landmarks", "classify", "align", "export_video", "snapchat", "snapchat_zip", "physique_filter"):
+    for name in ("landmarks", "classify", "align", "export_video", "snapchat", "snapchat_zip", "physique_filter", "measure"):
         try:
             __import__(f"app.services.{name}")
         except ImportError as e:  # module not written yet or optional dependency missing

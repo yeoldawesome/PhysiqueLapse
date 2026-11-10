@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { Bone, ExternalLink, FlipHorizontal2, RefreshCw, Star, Trash2, X } from "lucide-react";
+import { Bone, ExternalLink, FlipHorizontal2, RefreshCw, Ruler, Star, Trash2, X } from "lucide-react";
+import { MeasureOverlayModal } from "./PhotoMeasurements";
 import { useCategories, useCategoryMutations, useDeletePhoto, usePatchPhoto, usePhoto } from "../api/queries";
 import { post } from "../api/client";
 import { toast } from "../lib/toast";
@@ -25,6 +26,7 @@ export default function PhotoDrawer({ photoId, onClose }: { photoId: number; onC
   const remove = useDeletePhoto();
   const { setReference } = useCategoryMutations();
   const [overlay, setOverlay] = useState(false);
+  const [measureOpen, setMeasureOpen] = useState(false);
   const [notes, setNotes] = useState("");
   useEffect(() => setNotes(p?.notes ?? ""), [p?.id, p?.notes]);
 
@@ -66,6 +68,9 @@ export default function PhotoDrawer({ photoId, onClose }: { photoId: number; onC
             title={lmOk ? "toggle landmark overlay" : `landmarks: ${p.landmarks_status}`}
           >
             <Bone size={14} /> landmarks
+          </button>
+          <button className="btn btn-sm" onClick={() => setMeasureOpen(true)} disabled={!lmOk} title="body-size measurements from this photo">
+            <Ruler size={14} /> sizes
           </button>
         </div>
       </div>
@@ -220,6 +225,7 @@ export default function PhotoDrawer({ photoId, onClose }: { photoId: number; onC
           </ConfirmButton>
         </div>
       </div>
+      <MeasureOverlayModal photoId={measureOpen ? p.id : null} onClose={() => setMeasureOpen(false)} />
     </aside>
   );
 }

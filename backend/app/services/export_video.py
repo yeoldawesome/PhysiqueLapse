@@ -114,14 +114,29 @@ def frame_schedule(n: int, fps: float, crossfade: float, out_fps: int) -> list[t
     return out
 
 
-def collect_frames(s: Session, pose_id: int, date_from: date | None, date_to: date | None) -> tuple[list[Photo], int]:
+def collect_frames(
+    s: Session, pose_id: int, date_from: date | None, date_to: date | None, max_pose_diff_pct: float | None = None
+) -> tuple[list[Photo], int]:
     from ..api.viewer import sequence_photos
 
     photos = sequence_photos(s, pose_id, date_from, date_to)
+    torso_canvas = None
+    if max_pose_diff_pct is not None:
+        from ..models import PoseCategory
+        from ..settings import load_settings as _ls
+        from .align import category_context
+
+        try:
+            torso_canvas = category_context(s, s.get(PoseCategory, pose_id), _ls(s), auto_pick=False).target.lengths["torso"]
+        except LookupError:
+            torso_canvas = None
     usable, skipped = [], 0
     for p in photos:
         a = s.get(Alignment, p.id)
         if a is None or not a.output_path or a.pose_category_id != pose_id or not config.abs_path(a.output_path).exists():
+            skipped += 1
+            continue
+        if torso_canvas and a.joint_residual_px is not None and 100 * a.joint_residual_px / torso_canvas > max_pose_diff_pct:
             skipped += 1
             continue
         usable.append(p)
@@ -153,7 +168,8 @@ def job_export(ctx: JobContext, params: dict) -> dict:
         settings = load_settings(s)
         dfrom = date.fromisoformat(prm["from"]) if prm.get("from") else None
         dto = date.fromisoformat(prm["to"]) if prm.get("to") else None
-        photos, skipped = collect_frames(s, pose_id, dfrom, dto)
+        mpd = prm.get("max_pose_diff_pct")
+        photos, skipped = collect_frames(s, pose_id, dfrom, dto, float(mpd) if mpd is not None else None)
         if not photos:
             raise ValueError("no aligned frames in this range; run alignment first")
         fmt = prm.get("format", "mp4")
@@ -242,7 +258,7 @@ def job_export(ctx: JobContext, params: dict) -> dict:
         s.commit()
     msg = f"{fmt.upper()} with {len(frames)} photos ({path.stat().st_size / 1e6:.1f} MB)"
     if skipped:
-        msg += f"; {skipped} unaligned photos left out"
+        msg += f"; {skipped} photos left out (not aligned or outside the pose-match limit)"
     return {"message": msg, "export_id": export_id, "frames": len(frames), "skipped": skipped, "path": str(path)}
 
 

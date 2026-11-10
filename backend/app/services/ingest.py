@@ -236,7 +236,10 @@ def delete_photo(s: Session, photo: Photo, *, remember: bool = True) -> None:
         config.LANDMARKS_DIR / f"{pid}.json",
     ):
         p.unlink(missing_ok=True)
-    for model in (Alignment, PoseFeatures):
+    from ..models import PhotoMeasurement
+
+    (config.DERIVED_DIR / "masks" / f"{pid}.png").unlink(missing_ok=True)
+    for model in (Alignment, PoseFeatures, PhotoMeasurement):
         row = s.get(model, pid)
         if row is not None:
             s.delete(row)

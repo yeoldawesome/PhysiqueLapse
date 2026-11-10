@@ -112,8 +112,25 @@ def rule_scores(vec: list[float]) -> dict[str, float]:
     scores["selfie_flex"] = min(ph, gmean(lt(eo, 100, 10), gt(ho, 0.1, 0.08), front_on, gt(face, 0.55, 0.1)))
     scores["selfie_front"] = min(ph, gmean(gt(eo, 125, 10), lt(ho, -0.75, 0.1), front_on))
     side = min(ph, gmean(lt(sw, 0.6, 0.03), turned))
-    scores["selfie_side_down"] = min(side, gmean(gt(eo, 135, 10), lt(ho, -0.95, 0.1)))
-    scores["selfie_side_90"] = min(side, gmean(gt(eo, 55, 8), lt(eo, 125, 8), gt(ho, -0.95, 0.1)))
+    side_down = min(side, gmean(gt(eo, 135, 10), lt(ho, -0.95, 0.1)))
+    side_90 = min(side, gmean(gt(eo, 55, 8), lt(eo, 125, 8), gt(ho, -0.95, 0.1)))
+    flex, front = scores.pop("selfie_flex"), scores.pop("selfie_front")
+
+    # Split by body side. Mirror selfies show a mirror image, and the pose model labels
+    # left/right as if the photo were not mirrored, so the subject's REAL side is the
+    # opposite of the model's label. (Flipping a photo in the app swaps its group.)
+    real_left_phone = 1.0 if ph == pr else 0.0  # phone in the model's "right" hand = real left hand
+    scores["selfie_front_left"] = front * real_left_phone
+    scores["selfie_front_right"] = front * (1 - real_left_phone)
+    real_left_flex = 1.0 if o == "r" else 0.0  # flexing the model's "right" arm = real left arm
+    scores["selfie_flex_left"] = flex * real_left_flex
+    scores["selfie_flex_right"] = flex * (1 - real_left_flex)
+    f = F.facing_side(vec)  # > 0: the model's "left" side faces the camera = real right side
+    real_left_side = _sig(-f * 8)
+    scores["selfie_side_down_left"] = side_down * real_left_side
+    scores["selfie_side_down_right"] = side_down * (1 - real_left_side)
+    scores["selfie_side_90_left"] = side_90 * real_left_side
+    scores["selfie_side_90_right"] = side_90 * (1 - real_left_side)
     # stage poses are done without a phone in hand
     for k in ("front_double_bicep", "back_double_bicep", "front_lat_spread", "front_relaxed", "side_left", "side_right"):
         scores[k] = min(scores[k], 1.0 - ph)
@@ -206,6 +223,31 @@ def ensure_features(s: Session, photo: Photo) -> list[float] | None:
     return vec
 
 
+# Categories that exist as a left/right pair: a manual assignment fixes the pose, but the
+# side still follows the photo (so a manual "side 90" photo lands in the side it shows).
+SIDE_PAIRS = [
+    ("selfie_front_left", "selfie_front_right"),
+    ("selfie_flex_left", "selfie_flex_right"),
+    ("selfie_side_down_left", "selfie_side_down_right"),
+    ("selfie_side_90_left", "selfie_side_90_right"),
+    ("side_left", "side_right"),
+]
+
+
+def side_sibling(rule_key: str | None, vec: list[float] | None, cats_by_key: dict[str, int]) -> int | None:
+    """For a photo in one half of a left/right pair, the category id of the half its pose shows."""
+    if not rule_key or vec is None:
+        return None
+    for a, b in SIDE_PAIRS:
+        if rule_key in (a, b):
+            sc = rule_scores(vec)
+            if max(sc.get(a, 0), sc.get(b, 0)) < 0.05:
+                return None  # rules can't tell the side: leave it
+            best = a if sc.get(a, 0) >= sc.get(b, 0) else b
+            return cats_by_key.get(best)
+    return None
+
+
 @job("classify_poses", lane="cv", title="Classify poses")
 def job_classify(ctx: JobContext, params: dict) -> dict:
     ids = params.get("ids")
@@ -220,6 +262,25 @@ def job_classify(ctx: JobContext, params: dict) -> dict:
         # features first (labels need them for kNN)
         for p in s.exec(select(Photo).where(Photo.landmarks_status == "ok")).all():
             ensure_features(s, p)
+        s.commit()
+        # manual photos: keep the pose, move to the correct side of a left/right pair
+        moved = 0
+        key_of = {c.id: c.rule_key for c in cats}
+        for p in s.exec(select(Photo).where(Photo.pose_source == "manual", Photo.landmarks_status == "ok")).all():
+            target = side_sibling(key_of.get(p.pose_category_id), ensure_features(s, p), cats_by_key)
+            if target and target != p.pose_category_id:
+                p.pose_category_id = target
+                p.updated_at = now()
+                s.add(p)
+                lab = s.exec(select(PoseLabel).where(PoseLabel.photo_id == p.id)).first()
+                if lab is not None:
+                    lab.pose_category_id = target
+                    s.add(lab)
+                a = s.get(Alignment, p.id)
+                if a is not None:
+                    a.stale = True
+                    s.add(a)
+                moved += 1
         s.commit()
         model = build_knn(s, settings)
         total = len(photos)
@@ -258,7 +319,8 @@ def job_classify(ctx: JobContext, params: dict) -> dict:
         s.commit()
     method = "kNN" if model else "rules"
     return {
-        "message": f"Classified {total} photos with {method}: {changed} changed, {review} need review",
+        "message": f"Classified {total} photos with {method}: {changed} changed, {review} need review"
+        + (f"; {moved} hand-assigned photos moved to their correct side" if moved else ""),
         "classified": total,
         "changed": changed,
         "needs_review": review,

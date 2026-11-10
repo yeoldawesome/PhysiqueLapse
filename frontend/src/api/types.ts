@@ -19,6 +19,7 @@ export interface AlignmentInfo {
   scale_basis_used: string;
   flags: Record<string, unknown>;
   residual_px: number | null;
+  joint_residual_px: number | null;
   stale: boolean;
   has_output: boolean;
   computed_at: string | null;
@@ -95,7 +96,7 @@ export interface Category {
   anchor_mode: "auto" | "face" | "ears";
   scale_basis: "torso" | "nose_hip" | "head";
   rotation_basis: "torso" | "eyes" | "shoulders" | "none";
-  align_method: "body" | "head";
+  align_method: "joints" | "body" | "head";
   normalize_facing: boolean;
   framing_zoom: number;
   framing_dx: number;
@@ -255,6 +256,8 @@ export interface SequenceFrame {
   stale: boolean;
   flip_horizontal: boolean;
   stats: StatAt[];
+  measurements: Record<string, number>;
+  pose_diff_pct: number | null;
 }
 
 export interface Sequence {

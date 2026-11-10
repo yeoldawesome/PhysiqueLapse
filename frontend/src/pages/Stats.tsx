@@ -4,6 +4,7 @@ import { Download, FileUp, Plus, Trash2 } from "lucide-react";
 import { del, get, patch, post } from "../api/client";
 import type { Metric, MetricEntry } from "../api/types";
 import MetricChart from "../components/MetricChart";
+import PhotoMeasurements from "../components/PhotoMeasurements";
 import { ConfirmButton, Empty, Modal, PageHeader, Spinner } from "../components/ui";
 import { fmtDate, todayValue } from "../lib/format";
 import { toast } from "../lib/toast";
@@ -192,6 +193,7 @@ export default function Stats() {
   const [note, setNote] = useState("");
   const [csv, setCsv] = useState(false);
   const [custom, setCustom] = useState({ name: "", unit: "" });
+  const [tab, setTab] = useState<"tape" | "photos">(() => (new URLSearchParams(window.location.search).get("tab") === "photos" ? "photos" : "tape"));
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["metrics"] });
@@ -227,10 +229,29 @@ export default function Stats() {
   return (
     <div>
       <PageHeader title="Stats" subtitle="Measurements show up under the matching photos in the Viewer and in exported captions.">
-        <button className="btn" onClick={() => setCsv(true)}>
-          <FileUp size={14} /> Import CSV
-        </button>
+        <div className="flex rounded-md border border-border p-0.5">
+          {(
+            [
+              ["tape", "Tape & scale"],
+              ["photos", "From photos"],
+            ] as const
+          ).map(([k, label]) => (
+            <button key={k} className={`rounded px-3 py-1 text-sm ${tab === k ? "bg-panel-2 text-text" : "text-muted hover:text-text"}`} onClick={() => setTab(k)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {tab === "tape" && (
+          <button className="btn" onClick={() => setCsv(true)}>
+            <FileUp size={14} /> Import CSV
+          </button>
+        )}
       </PageHeader>
+      {tab === "photos" ? (
+        <div className="max-w-6xl p-6">
+          <PhotoMeasurements />
+        </div>
+      ) : (
       <div className="flex max-w-5xl flex-col gap-4 p-6">
         <div className="flex flex-wrap items-center gap-1 border-b border-border">
           {metrics.data!.map((m) => (
@@ -349,6 +370,7 @@ export default function Stats() {
           </button>
         </div>
       </div>
+      )}
       <CsvImport open={csv} onClose={() => setCsv(false)} onDone={refresh} />
     </div>
   );

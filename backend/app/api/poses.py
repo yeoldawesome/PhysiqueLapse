@@ -84,8 +84,8 @@ def _apply(c: PoseCategory, body: CategoryIn) -> None:
             raise HTTPException(422, f"rotation_basis must be one of {sorted(ROTATION_BASES)}")
         c.rotation_basis = body.rotation_basis
     if body.align_method is not None:
-        if body.align_method not in ("body", "head"):
-            raise HTTPException(422, "align_method must be body or head")
+        if body.align_method not in ("joints", "body", "head"):
+            raise HTTPException(422, "align_method must be joints, body or head")
         c.align_method = body.align_method
     if body.normalize_facing is not None:
         c.normalize_facing = body.normalize_facing
