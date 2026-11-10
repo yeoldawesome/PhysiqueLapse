@@ -105,7 +105,7 @@ export default function Dashboard() {
   const span = daysBetween(data.date_span.first, data.date_span.last);
   return (
     <div>
-      <PageHeader title="Dashboard">
+      <PageHeader title="Dashboard" subtitle={<Link to="/guide" className="hover:underline">New here? See how it works →</Link>}>
         <button className="btn" onClick={() => run.mutate({ path: "/landmarks/extract" })} title="detect body landmarks for photos that do not have them yet">
           <Bone size={14} /> Extract landmarks
           {c.landmarks_pending > 0 && <span className="badge bg-accent-2/20 text-accent">{c.landmarks_pending}</span>}
@@ -124,7 +124,11 @@ export default function Dashboard() {
             <Link to="/import" className="text-accent underline">
               Import
             </Link>{" "}
-            page. Everything stays on this computer.
+            page, or read{" "}
+            <Link to="/guide" className="text-accent underline">
+              Start here
+            </Link>{" "}
+            for a walkthrough. Everything stays on this computer.
           </Empty>
         ) : (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">

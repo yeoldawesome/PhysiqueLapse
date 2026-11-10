@@ -1,10 +1,11 @@
 import { NavLink, Outlet } from "react-router";
-import { Activity, Images, LayoutDashboard, ListChecks, Play, Settings as SettingsIcon, Upload, UserX } from "lucide-react";
+import { Activity, BookOpen, Images, LayoutDashboard, ListChecks, Play, Settings as SettingsIcon, Upload, UserX } from "lucide-react";
 import JobDrawer from "./components/JobDrawer";
 import Toasts from "./components/Toasts";
 import { useDashboard } from "./api/queries";
 
 const NAV = [
+  { to: "/guide", label: "Start here", icon: BookOpen },
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/library", label: "Library", icon: Images },
   { to: "/import", label: "Import", icon: Upload },

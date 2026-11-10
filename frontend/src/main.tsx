@@ -13,6 +13,7 @@ import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
 import Editor from "./pages/Editor";
 import People from "./pages/People";
+import Guide from "./pages/Guide";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
       { path: "import", element: <Import /> },
       { path: "review", element: <ReviewQueue /> },
       { path: "people", element: <People /> },
+      { path: "guide", element: <Guide /> },
       { path: "viewer", element: <Viewer /> },
       { path: "editor/:photoId", element: <Editor /> },
       { path: "stats", element: <Stats /> },
