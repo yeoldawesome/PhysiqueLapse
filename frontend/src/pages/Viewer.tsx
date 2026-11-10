@@ -139,6 +139,11 @@ export default function Viewer() {
     [allFrames, maxDiff, hideSleeves],
   );
   const hidden = allFrames.length - frames.length;
+  // what an export starts from (stable between playback ticks, so the export preview keeps playing)
+  const exportFrames = useMemo(
+    () => frames.filter((f) => f.aligned_url && f.taken_at).map((f) => ({ url: f.aligned_url as string, taken_at: f.taken_at as string })),
+    [frames],
+  );
   const [index, setIndex] = useState(0);
   const [compare, setCompare] = useState(0);
   const [mode, setMode] = useState<Mode>("single");
@@ -147,7 +152,7 @@ export default function Viewer() {
   const [playing, setPlaying] = useState(false);
   const [fps, setFps] = useState(2);
   const [fade, setFade] = useState(true);
-  const [exportOpen, setExportOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(() => new URLSearchParams(window.location.search).get("export") === "1"); // ?export=1 opens the export window
   const [metricId, setMetricId] = useState<number | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
@@ -565,8 +570,7 @@ export default function Viewer() {
           defaultFps={fps}
           maxPoseDiff={isAbs ? null : maxDiff}
           hideSleeves={hideSleeves}
-          frameDates={frames.filter((f) => f.aligned_url && f.taken_at).map((f) => f.taken_at as string)}
-          previewUrl={(cur ?? frames[0])?.aligned_url ?? null}
+          frames={exportFrames}
           canvasW={seq.data?.canvas_w}
           canvasH={seq.data?.canvas_h}
         />

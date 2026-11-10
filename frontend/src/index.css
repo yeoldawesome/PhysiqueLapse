@@ -93,3 +93,12 @@ input[type="number"]::-webkit-inner-spin-button {
 .fade-in {
   animation: fade-in 0.15s ease-out;
 }
+/* export preview crossfade: the new photo fades in over the old one */
+@keyframes pl-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

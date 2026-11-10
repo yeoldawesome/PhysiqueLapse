@@ -190,26 +190,43 @@ def _seed(s: Session) -> None:
             s.add(c)
             s.flush()
     s.flush()
-    # insert built-in categories that are missing (new ones are added to existing libraries too)
-    have = {c.rule_key: c for c in s.exec(select(PoseCategory)).all() if c.rule_key}
-    for i, (_n, key, _a) in enumerate(BUILTIN_CATEGORIES):  # keep built-ins in their canonical order
-        if key in have and have[key].sort_order != i:
-            have[key].sort_order = i
-            s.add(have[key])
-    names = {n.lower() for n in s.exec(select(PoseCategory.name)).all()}
+    # Built-in categories are offered once: a fresh library gets them all, an existing one gets
+    # only built-ins added in a later version. After that the categories are the user's: deleting,
+    # renaming or reordering one is never undone here. The keys already offered are remembered.
+    offered_row = s.get(Setting, "builtin_categories_offered")
+    existing = s.exec(select(PoseCategory)).all()
+    if offered_row is not None:
+        offered = set(offered_row.value.get("v", []))
+    elif existing:  # library from before this was tracked: everything it lacks was removed by the user
+        offered = {k for _n, k, _a in BUILTIN_CATEGORIES}
+    else:
+        offered = set()
+    have = {c.rule_key for c in existing if c.rule_key}
+    names = {c.name.lower() for c in existing}
+    next_order = max((c.sort_order for c in existing), default=-1) + 1
     for i, (name, key, anchor) in enumerate(BUILTIN_CATEGORIES):
-        if key in have:
-            if key == "other":
-                have[key].sort_order = max(have[key].sort_order, len(BUILTIN_CATEGORIES) - 1)
-                s.add(have[key])
+        if key in offered or key in have:
+            offered.add(key)
             continue
+        offered.add(key)
         if name.lower() in names:  # user already made one with this name: adopt it
             c = s.exec(select(PoseCategory).where(PoseCategory.name == name)).first()
             if c is not None and c.rule_key is None:
                 c.rule_key = key
                 s.add(c)
             continue
-        s.add(PoseCategory(name=name, rule_key=key, sort_order=i, anchor_mode=anchor))
+        s.add(PoseCategory(name=name, rule_key=key, sort_order=i if not existing else next_order, anchor_mode=anchor))
+        next_order += 1
+    if offered_row is None:
+        offered_row = Setting(key="builtin_categories_offered", value={"v": sorted(offered)})
+    else:
+        offered_row.value = {"v": sorted(offered)}
+    s.add(offered_row)
+    # "Other" must exist: photos of a deleted category move there
+    if "other" not in have and not s.exec(select(PoseCategory).where(PoseCategory.rule_key == "other")).first():
+        s.flush()
+        if not s.exec(select(PoseCategory).where(PoseCategory.rule_key == "other")).first():
+            s.add(PoseCategory(name="Other", rule_key="other", sort_order=next_order, anchor_mode="auto"))
     if not s.exec(select(Metric.id).limit(1)).first():
         s.add(Metric(name="Weight", unit="lb", is_builtin=True, sort_order=0, decimals=1, kind="weight"))
     s.commit()

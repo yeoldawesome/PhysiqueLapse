@@ -18,3 +18,7 @@ if there is just one arm up it is not a fron lat spread its kust a front left or
 for my home page insted of it being a list i would like it to be a grid with an image of the pose as the main focus with the pose name bellow it and a view and algin button bellow that too, also when i go into the catigory at the top i should have those same align buttons and view buttons at the top section
 
 i want the ability to save a time laps like in the view, want to be able to set it at what ever speed i want and be able to mess with alot of the settings 
+
+
+
+implement person sorting system

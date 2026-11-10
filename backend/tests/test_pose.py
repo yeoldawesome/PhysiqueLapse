@@ -273,3 +273,36 @@ def test_manual_photo_follows_its_side():
     assert C.side_sibling("selfie_side_90_left", vec_right, CATS) == CATS["selfie_side_90_right"]
     assert C.side_sibling("selfie_side_90_left", vec_left, CATS) == CATS["selfie_side_90_left"]
     assert C.side_sibling("front_double_bicep", vec_right, CATS) is None  # not a left/right pair
+
+
+def test_category_changes_survive_restart(client):
+    """Deleting, renaming and reordering poses is the user's choice: a restart must not undo it."""
+    from app import db
+
+    cats = {c["rule_key"]: c for c in client.get("/api/poses").json()}
+    assert len(cats) == len(db.BUILTIN_CATEGORIES)  # a fresh library gets every built-in pose
+    assert client.delete(f"/api/poses/{cats['back_double_bicep']['id']}").status_code == 200
+    client.patch(f"/api/poses/{cats['front_relaxed']['id']}", json={"name": "Relaxed (front)", "sort_order": 99})
+    own = client.post("/api/poses", json={"name": "Most Muscular"}).json()
+
+    db.init_db()  # what happens on every server start
+    db.init_db()
+    after = {c["name"]: c for c in client.get("/api/poses").json()}
+    assert "Back Double Bicep" not in after
+    assert after["Relaxed (front)"]["sort_order"] == 99
+    assert "Front Relaxed" not in after
+    assert after["Most Muscular"]["id"] == own["id"]
+    assert sum(1 for c in after.values() if c["rule_key"] == "other") == 1
+
+    # a built-in pose added in a later app version still reaches existing libraries, once
+    db.BUILTIN_CATEGORIES.append(("Rear Lat Spread", "rear_lat_spread", "ears"))
+    try:
+        db.init_db()
+        names = [c["name"] for c in client.get("/api/poses").json()]
+        assert names.count("Rear Lat Spread") == 1
+        rid = next(c["id"] for c in client.get("/api/poses").json() if c["name"] == "Rear Lat Spread")
+        client.delete(f"/api/poses/{rid}")
+        db.init_db()
+        assert "Rear Lat Spread" not in [c["name"] for c in client.get("/api/poses").json()]
+    finally:
+        db.BUILTIN_CATEGORIES.pop()

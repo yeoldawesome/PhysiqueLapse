@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Film, RotateCcw, Trash2 } from "lucide-react";
+import { Download, Film, Play, RotateCcw, Trash2 } from "lucide-react";
 import { del, get, post } from "../api/client";
 import type { ExportItem, Job, Metric } from "../api/types";
 import { fmtBytes, fmtDateTime } from "../lib/format";
 import { toast } from "../lib/toast";
+import ExportPreview, { type PreviewFrame } from "./ExportPreview";
 import { ConfirmButton, Field, Modal, Toggle } from "./ui";
 
 export function useExports() {
@@ -81,29 +82,34 @@ function load(defaultFps: number): Opts {
   return { ...DEFAULTS, fps: defaultFps || DEFAULTS.fps };
 }
 
-/** Same rule as the server (pick_photos): at most one photo per period (the first), then every Nth. */
-function pickedCount(dates: string[], every: Every, step: number): number {
-  let n = dates.length;
+/** Same rule as the server (pick_photos): at most one photo per period (the first), then every
+ * Nth, optionally newest first. Input sorted oldest first. */
+function pickFrames(frames: PreviewFrame[], every: Every, step: number, reverse: boolean): PreviewFrame[] {
+  let out = frames;
   if (every !== "all") {
     const seen = new Set<string>();
-    for (const d of dates) {
-      const t = new Date(d);
+    out = [];
+    for (const f of frames) {
+      const d = f.taken_at;
       let key: string;
       if (every === "day") key = d.slice(0, 10);
       else if (every === "month") key = d.slice(0, 7);
       else {
         // ISO week
-        const u = new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()));
+        const [y, m, dd] = d.slice(0, 10).split("-").map(Number);
+        const u = new Date(Date.UTC(y, m - 1, dd));
         const day = u.getUTCDay() || 7;
         u.setUTCDate(u.getUTCDate() + 4 - day);
         const y0 = new Date(Date.UTC(u.getUTCFullYear(), 0, 1));
         key = `${u.getUTCFullYear()}-${Math.ceil(((u.getTime() - y0.getTime()) / 86400000 + 1) / 7)}`;
       }
+      if (seen.has(key)) continue;
       seen.add(key);
+      out.push(f);
     }
-    n = seen.size;
   }
-  return Math.ceil(n / Math.max(1, step));
+  out = out.filter((_, i) => i % Math.max(1, step) === 0);
+  return reverse ? [...out].reverse() : out;
 }
 
 const fmtSec = (s: number) => (s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${s.toFixed(s < 10 ? 1 : 0)} s`);
@@ -127,8 +133,7 @@ export default function ExportDialog({
   maxPoseDiff,
   group,
   hideSleeves,
-  frameDates = [],
-  previewUrl,
+  frames = [],
   canvasW = 1080,
   canvasH = 1350,
 }: {
@@ -141,9 +146,8 @@ export default function ExportDialog({
   defaultFps: number;
   maxPoseDiff?: number | null;
   hideSleeves?: boolean;
-  /** taken_at of the photos the Viewer is showing (after its filters), for the length estimate */
-  frameDates?: string[];
-  previewUrl?: string | null;
+  /** the aligned photos the Viewer is showing (after its filters): what the export starts from */
+  frames?: PreviewFrame[];
   canvasW?: number;
   canvasH?: number;
 }) {
@@ -152,6 +156,7 @@ export default function ExportDialog({
   const exports = useExports();
   const [o, setO] = useState<Opts>(() => load(defaultFps));
   const [busy, setBusy] = useState(false);
+  const [watching, setWatching] = useState<number | null>(null); // finished export playing in the list
   const set = <K extends keyof Opts>(k: K, v: Opts[K]) => setO((p) => ({ ...p, [k]: v }));
   useEffect(() => {
     try {
@@ -162,8 +167,9 @@ export default function ExportDialog({
   }, [o]);
 
   // ---- what will come out
-  const sorted = useMemo(() => [...frameDates].sort(), [frameDates]);
-  const n = pickedCount(sorted, o.every, o.step);
+  const sorted = useMemo(() => [...frames].sort((a, b) => a.taken_at.localeCompare(b.taken_at)), [frames]);
+  const picked = useMemo(() => pickFrames(sorted, o.every, o.step, o.reverse), [sorted, o.every, o.step, o.reverse]);
+  const n = picked.length;
   const shown = o.boomerang && n > 1 ? 2 * n - 2 : n; // photos played, counting the way back
   const steps = Math.max(0, shown - 1);
   const fixed = o.holdStart + o.holdEnd;
@@ -211,7 +217,6 @@ export default function ExportDialog({
     }
   };
 
-  const capLines = [o.title.trim(), [o.capDate && "Mar 5, 2026", o.capDays && "Day 412"].filter(Boolean).join("  ·  ")].filter(Boolean);
 
   return (
     <Modal open={open} onClose={onClose} title="Export time-lapse" width="max-w-5xl">
@@ -399,38 +404,33 @@ export default function ExportDialog({
         </div>
 
         {/* preview + summary */}
-        <div className="flex w-full shrink-0 flex-col gap-3 md:w-64">
+        <div className="flex w-full shrink-0 flex-col gap-3 md:w-72">
           <div className="label">Preview</div>
-          <div className="relative mx-auto w-full overflow-hidden rounded border border-border" style={{ aspectRatio: `${ratio}`, maxWidth: ratio < 0.7 ? 200 : 256, background: o.fit === "fit" ? o.background : "#000" }}>
-            {previewUrl ? (
-              <img src={previewUrl} alt="" className="h-full w-full" style={{ objectFit: o.aspect === "original" ? "fill" : o.fit === "fill" ? "cover" : "contain" }} />
-            ) : (
-              <div className="flex h-full items-center justify-center text-xs text-muted">no frame</div>
-            )}
-            {capLines.length > 0 && (
-              <div
-                className={`absolute inset-x-0 px-2 py-1.5 text-white ${o.capPosition === "top" ? "top-0 bg-gradient-to-b" : "bottom-0 bg-gradient-to-t"} from-black/70 to-transparent`}
-                style={{ fontSize: `${Math.max(7, 11 * o.capSize * Math.min(1, ratio * 1.25))}px`, lineHeight: 1.3 }}
-              >
-                {capLines.map((l, i) => (
-                  <div key={i} className="truncate font-semibold [text-shadow:0_1px_2px_rgba(0,0,0,.6)]">
-                    {l}
-                  </div>
-                ))}
-              </div>
-            )}
-            {o.progressBar && (
-              <div className="absolute inset-x-0 bottom-0 h-1 bg-neutral-800">
-                <div className="h-full w-1/3 bg-white" />
-              </div>
-            )}
-          </div>
+          <ExportPreview
+            frames={picked}
+            firstDate={sorted[0]?.taken_at ?? null}
+            fps={fps}
+            holdStart={o.holdStart}
+            holdEnd={o.holdEnd}
+            crossfade={o.crossfade}
+            boomerang={o.boomerang}
+            ratio={ratio}
+            objectFit={o.aspect === "original" ? "fill" : o.fit === "fill" ? "cover" : "contain"}
+            background={o.aspect !== "original" && o.fit === "fit" ? o.background : "#000"}
+            title={o.title}
+            showDate={o.capDate}
+            showDays={o.capDays}
+            capPosition={o.capPosition}
+            capSize={o.capSize}
+            progressBar={o.progressBar}
+          />
+          {o.capMetrics.length > 0 && <div className="-mt-1 text-[11px] text-muted">Stats lines are drawn in the video, not in this preview.</div>}
           <div className="rounded-md border border-border p-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted">Photos</span>
               <span className="tabular-nums">
                 {n}
-                {n < frameDates.length ? <span className="text-muted"> of {frameDates.length}</span> : null}
+                {n < frames.length ? <span className="text-muted"> of {frames.length}</span> : null}
               </span>
             </div>
             <div className="flex justify-between">
@@ -465,7 +465,7 @@ export default function ExportDialog({
         ) : (
           <ul className="divide-y divide-border rounded border border-border">
             {exports.data!.map((x) => (
-              <li key={x.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+              <li key={x.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
                 <span className="badge bg-panel-2 uppercase text-muted">{x.format}</span>
                 <span className="truncate">{x.path?.split("/").pop() ?? `export #${x.id}`}</span>
                 <span className="text-xs text-muted">
@@ -475,9 +475,18 @@ export default function ExportDialog({
                 </span>
                 <span className={`ml-auto text-xs ${x.status === "failed" ? "text-danger" : x.status === "done" ? "text-ok" : "text-muted"}`}>{x.status}</span>
                 {x.status === "done" && (
-                  <a className="btn btn-sm" href={x.download_url} title="save to your computer">
-                    <Download size={13} />
-                  </a>
+                  <>
+                    <button
+                      className={`btn btn-sm ${watching === x.id ? "btn-primary" : ""}`}
+                      onClick={() => setWatching(watching === x.id ? null : x.id)}
+                      title="play the finished export here"
+                    >
+                      <Play size={13} />
+                    </button>
+                    <a className="btn btn-sm" href={x.download_url} title="save to your computer">
+                      <Download size={13} />
+                    </a>
+                  </>
                 )}
                 {x.status !== "running" && x.status !== "queued" && (
                   <ConfirmButton
@@ -491,6 +500,15 @@ export default function ExportDialog({
                   >
                     <Trash2 size={13} />
                   </ConfirmButton>
+                )}
+                {watching === x.id && x.status === "done" && (
+                  <div className="w-full pt-2">
+                    {x.format === "mp4" ? (
+                      <video src={x.download_url} controls autoPlay loop className="mx-auto max-h-[60vh] rounded border border-border bg-black" />
+                    ) : (
+                      <img src={x.download_url} alt="" className="mx-auto max-h-[60vh] rounded border border-border" />
+                    )}
+                  </div>
                 )}
               </li>
             ))}

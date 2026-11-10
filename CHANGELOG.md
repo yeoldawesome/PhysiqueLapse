@@ -2,6 +2,12 @@
 
 Newest first. Each entry says what was done, what was verified, and what is next, so a new session can resume.
 
+## 2026-11-10 — Poses stay as the user left them; New pose; export preview
+- Fixed: every server start re-created deleted built-in poses and reset their order. Built-ins are now offered once (setting `builtin_categories_offered`; existing libraries count all current built-ins as offered); later versions can still add new built-ins once. Deletes, renames, order and user poses survive restarts (test). The re-created Back Double Bicep was deleted again (DB copy before: scratchpad physiquelapse.before-offered.db).
+- New pose: a "New pose" card at the end of the Dashboard grid and a box in Settings → Pose examples; both jump to the new pose's examples (`/settings#pose-<id>`). Empty pose cards link there too.
+- Export window: live preview that plays the exact photos, order, timing (holds, speed, crossfade, boomerang), shape, captions (real dates / day numbers) and progress bar, with play / pause / restart / scrub; finished exports play inline (▶). `/viewer?pose_id=<id>&export=1` opens the window. Checked by screenshot; caught and fixed an off-by-a-month day number in the preview.
+- 138 tests pass.
+
 ## 2026-11-10 — Export settings
 - Viewer → Export now has: speed 0.05–60 photos/s (slider, presets, or "total length" which works out the speed); hold first / last photo; crossfade; boomerang; newest first; one photo per day / week / month and every Nth; shape original / 1:1 / 4:5 / 9:16 / 16:9 with fill (crop) or fit (bars, colour picker); any width; MP4 quality; caption title, top/bottom, text size; progress bar. Live estimate of photo count, length and size, a preview of shape and caption, settings remembered per browser, reset button.
 - Server: `ExportIn` fields above; `pick_photos`, `play_order`, `compose`, `output_size`, `draw_progress`; `frame_schedule` takes holds (default end hold unchanged: two photos' time); output frame rate rises up to 60 (MP4) / 50 (GIF) when the speed needs it.

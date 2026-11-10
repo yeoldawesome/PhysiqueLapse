@@ -1,10 +1,61 @@
 import { Link } from "react-router";
-import type { ReactNode } from "react";
-import { Bone, Crosshair, ImageOff, Tags } from "lucide-react";
-import { useDashboard, useRunJob } from "../api/queries";
+import { useState, type ReactNode } from "react";
+import { useNavigate } from "react-router";
+import { Bone, Crosshair, ImageOff, Plus, Tags } from "lucide-react";
+import { useCategoryMutations, useDashboard, useRunJob } from "../api/queries";
 import PoseActions from "../components/PoseActions";
 import { Empty, PageHeader, Spinner, Stat } from "../components/ui";
 import { daysBetween, fmtDate } from "../lib/format";
+
+/** The last card in the grid: name a new pose, then go and give it examples. */
+function NewPoseCard() {
+  const { create } = useCategoryMutations();
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
+  const add = () => {
+    const n = name.trim();
+    if (!n) return;
+    create.mutate({ name: n }, { onSuccess: (c) => navigate(`/settings#pose-${c.id}`) });
+  };
+  if (!editing) {
+    return (
+      <button
+        className="card flex min-h-[16rem] flex-col items-center justify-center gap-2 border-dashed text-muted transition-colors hover:border-accent hover:text-text"
+        onClick={() => setEditing(true)}
+        title="add your own pose, e.g. Most Muscular"
+      >
+        <Plus size={28} />
+        <span className="text-sm font-medium">New pose</span>
+      </button>
+    );
+  }
+  return (
+    <div className="card flex min-h-[16rem] flex-col justify-center gap-2 border-dashed p-3">
+      <div className="text-sm font-medium">New pose</div>
+      <input
+        className="input"
+        autoFocus
+        placeholder="name, e.g. Most Muscular"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") add();
+          if (e.key === "Escape") setEditing(false);
+        }}
+      />
+      <div className="text-[11px] text-muted">Next you add a few example photos of it; photos that look like them go here.</div>
+      <div className="flex gap-1.5">
+        <button className="btn btn-sm btn-primary flex-1 justify-center" disabled={!name.trim() || create.isPending} onClick={add}>
+          Add
+        </button>
+        <button className="btn btn-sm flex-1 justify-center" onClick={() => setEditing(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /** A pose on the home page: its picture first, then the name, then View / Align. */
 function PoseCard({ to, image, flip, name, sub, children }: { to: string; image: string | null; flip?: boolean; name: string; sub: string; children: ReactNode }) {
@@ -160,8 +211,14 @@ export default function Dashboard() {
                 sub={`${cat.photo_count} photo${cat.photo_count === 1 ? "" : "s"}${cat.photo_count && !cat.reference_photo_id ? " · no reference" : ""}`}
               >
                 <PoseActions poseId={cat.id} photoCount={cat.photo_count} hasReference={!!cat.reference_photo_id} stretch />
+                {cat.photo_count === 0 && (
+                  <Link to={`/settings#pose-${cat.id}`} className="mt-1.5 block text-center text-xs text-accent hover:underline">
+                    add examples so photos land here →
+                  </Link>
+                )}
               </PoseCard>
             ))}
+            <NewPoseCard />
             {(["abs", "face"] as const).map((g) => (
               <PoseCard
                 key={g}

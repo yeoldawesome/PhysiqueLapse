@@ -1,9 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router";
-import { AlertTriangle, RefreshCw, Upload, X } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router";
+import { AlertTriangle, Plus, RefreshCw, Upload, X } from "lucide-react";
 import { api, del, get } from "../api/client";
-import { keys, useCategories, usePatchPhoto, useRunJob } from "../api/queries";
+import { keys, useCategories, useCategoryMutations, usePatchPhoto, useRunJob } from "../api/queries";
 import { toast } from "../lib/toast";
 import { ConfirmButton, Spinner } from "./ui";
 
@@ -85,6 +85,23 @@ export default function PoseTeaching() {
   };
 
   const name = (id: number | null) => cats.find((c) => c.id === id)?.name ?? "?";
+
+  // new pose: created here or from the Dashboard's "New pose" card (which links to #pose-<id>)
+  const { create } = useCategoryMutations();
+  const [newName, setNewName] = useState("");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const hashId = /^#pose-(\d+)$/.exec(location.hash)?.[1];
+  const focus = hashId ? Number(hashId) : null;
+  const addPose = () => {
+    const n = newName.trim();
+    if (!n) return;
+    create.mutate({ name: n }, { onSuccess: (c) => (setNewName(""), navigate(`/settings#pose-${c.id}`, { replace: true })) });
+  };
+  useEffect(() => {
+    if (focus == null || !examples || !cats.some((c) => c.id === focus)) return;
+    document.getElementById(`pose-${focus}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [focus, examples, cats]);
   const flagged = (examples ?? []).filter((e) => e.looks_like != null).length;
   const total = (examples ?? []).filter((e) => !e.no_pose).length;
 
@@ -95,6 +112,16 @@ export default function PoseTeaching() {
         <h2 className="font-medium">Pose examples</h2>
         <span className="text-xs text-muted">{total} examples</span>
         <span className="flex-1" />
+        <input
+          className="input w-56"
+          placeholder="new pose, e.g. Most Muscular"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addPose()}
+        />
+        <button className="btn" disabled={!newName.trim() || create.isPending} onClick={addPose} title="add your own pose; then upload a few examples of it">
+          <Plus size={14} /> New pose
+        </button>
         <ConfirmButton
           className="btn btn-primary"
           confirmText="Reclassify every photo?"
@@ -127,7 +154,7 @@ export default function PoseTeaching() {
             const usable = ex.filter((e) => !e.no_pose).length;
             const busy = uploadingFor === c.id;
             return (
-              <div key={c.id} className="py-2">
+              <div key={c.id} id={`pose-${c.id}`} className={`scroll-mt-20 py-2 ${focus === c.id ? "-mx-2 rounded-md bg-accent/10 px-2" : ""}`}>
                 <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
                   <span className="font-medium">{c.name}</span>
                   <span className="text-xs text-muted">
