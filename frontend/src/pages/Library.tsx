@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { useBulk, useCategories, useDashboard, usePatchPhoto, usePhotos, type PhotoFilters } from "../api/queries";
+import PoseActions from "../components/PoseActions";
 import PoseExamples from "../components/PoseExamples";
 import PhotoGrid from "../components/PhotoGrid";
 import PhotoDrawer from "../components/PhotoDrawer";
@@ -53,6 +54,11 @@ export default function Library() {
     [params],
   );
   const { data, isLoading, isFetching } = usePhotos(filters);
+  // a single pose is open (from a Dashboard card): its name as the title, View / Align beside it
+  const poseParam = params.get("pose_id");
+  const poseCat = poseParam && /^\d+$/.test(poseParam) ? cats.find((c) => c.id === Number(poseParam)) : undefined;
+  const poseKey: number | "abs" | "face" | null = poseCat ? poseCat.id : poseParam === "abs" || poseParam === "face" ? poseParam : null;
+  const poseTitle = poseCat?.name ?? (poseParam === "abs" ? "Abs" : poseParam === "face" ? "Face" : null);
   const photos = useMemo(() => data?.items ?? [], [data]);
 
   const set = useCallback(
@@ -151,7 +157,15 @@ export default function Library() {
   return (
     <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col">
-        <PageHeader title="Library" subtitle={data ? `${data.total} photos${isFetching ? " · refreshing" : ""}` : ""}>
+        <PageHeader title={poseTitle ?? "Library"} subtitle={data ? `${data.total} photos${isFetching ? " · refreshing" : ""}` : ""}>
+          {poseKey != null && (
+            <PoseActions
+              poseId={poseKey}
+              photoCount={poseCat ? poseCat.photo_count : (poseKey === "abs" ? dash?.abs.visible : dash?.face.visible) ?? 0}
+              hasReference={!!poseCat?.reference_photo_id}
+              size="md"
+            />
+          )}
           <label className="relative">
             <Search size={14} className="absolute left-2 top-2 text-muted" />
             <input className="input w-48 pl-7" placeholder="filename or notes" value={q} onChange={(e) => setQ(e.target.value)} />

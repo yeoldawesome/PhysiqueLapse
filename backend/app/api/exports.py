@@ -23,6 +23,9 @@ class CaptionIn(BaseModel):
     date: bool = True
     days: bool = True
     metrics: list[int] = Field(default_factory=list)
+    title: str = Field("", max_length=120)  # extra line above the date, e.g. "Bulk 2025"
+    position: str = Field("bottom", pattern="^(top|bottom)$")
+    size: float = Field(1.0, ge=0.5, le=2.5)  # text size multiplier
 
 
 class ExportIn(BaseModel):
@@ -30,10 +33,21 @@ class ExportIn(BaseModel):
     group: str | None = Field(None, pattern="^(abs|face)$")  # close-up groups instead of a pose category
     from_: date | None = Field(None, alias="from")
     to: date | None = None
-    fps: float = Field(2.0, gt=0, le=30)
+    fps: float = Field(2.0, ge=0.05, le=60)  # photos per second
     format: str = Field("mp4", pattern="^(mp4|gif)$")
     width: int | None = Field(None, ge=128, le=4096)
     crossfade: float = Field(0.0, ge=0, le=5)
+    hold_start: float = Field(0.0, ge=0, le=30)  # extra seconds on the first photo
+    hold_end: float | None = Field(None, ge=0, le=30)  # seconds the last photo is shown (default: two photos' time)
+    every: str = Field("all", pattern="^(all|day|week|month)$")  # at most one photo per period (the first)
+    step: int = Field(1, ge=1, le=100)  # then keep every Nth photo
+    reverse: bool = False  # newest first
+    boomerang: bool = False  # play forward, then back
+    aspect: str = Field("original", pattern="^(original|1:1|4:5|9:16|16:9)$")
+    fit: str = Field("fill", pattern="^(fill|fit)$")  # fill = crop to the shape, fit = add bars
+    background: str = Field("#000000", pattern="^#[0-9a-fA-F]{6}$")  # bar colour for "fit"
+    quality: int = Field(8, ge=1, le=10)  # MP4 quality (10 = best, biggest file)
+    progress_bar: bool = False  # thin bar along the bottom showing how far through the time-lapse
     max_pose_diff_pct: float | None = Field(None, gt=0, le=200)
     hide_sleeves: bool = False  # leave out photos whose arms are covered by clothing
     caption: CaptionIn = Field(default_factory=CaptionIn)

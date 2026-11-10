@@ -565,6 +565,10 @@ export default function Viewer() {
           defaultFps={fps}
           maxPoseDiff={isAbs ? null : maxDiff}
           hideSleeves={hideSleeves}
+          frameDates={frames.filter((f) => f.aligned_url && f.taken_at).map((f) => f.taken_at as string)}
+          previewUrl={(cur ?? frames[0])?.aligned_url ?? null}
+          canvasW={seq.data?.canvas_w}
+          canvasH={seq.data?.canvas_h}
         />
       )}
     </div>

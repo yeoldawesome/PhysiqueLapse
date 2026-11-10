@@ -12,4 +12,9 @@ when going though the post that need review page i want like at the top examples
 
 i would like to add a face catigorie where it aligns face from every photo, it should not over ride any other catigory like i just want a section to view all the faces aligned in date order
 
-if there is just one arm up it is not a fron lat spread its kust a front left or right arm flex, i would perfer joint matching for pose clasification over some knn nurel net work, but having both might be usefull also if i have examples in the pose set and i confim they are right, they should no longer be orange, just when it comes to the like pose examples like i know they are right.also if ita over 50 its probably right
+if there is just one arm up it is not a fron lat spread its kust a front left or right arm flex, i would perfer joint matching for pose clasification over some knn nurel net work, but having both might be usefull also if i have examples in the pose set and i confim they are right, they should no longer be orange, just when it comes to the like pose examples like i know they are right.also if ita over 50 its probably righ
+
+
+for my home page insted of it being a list i would like it to be a grid with an image of the pose as the main focus with the pose name bellow it and a view and algin button bellow that too, also when i go into the catigory at the top i should have those same align buttons and view buttons at the top section
+
+i want the ability to save a time laps like in the view, want to be able to set it at what ever speed i want and be able to mess with alot of the settings 

@@ -1,8 +1,44 @@
 import { Link } from "react-router";
-import { Bone, Crosshair, Play, Tags } from "lucide-react";
+import type { ReactNode } from "react";
+import { Bone, Crosshair, ImageOff, Tags } from "lucide-react";
 import { useDashboard, useRunJob } from "../api/queries";
+import PoseActions from "../components/PoseActions";
 import { Empty, PageHeader, Spinner, Stat } from "../components/ui";
 import { daysBetween, fmtDate } from "../lib/format";
+
+/** A pose on the home page: its picture first, then the name, then View / Align. */
+function PoseCard({ to, image, flip, name, sub, children }: { to: string; image: string | null; flip?: boolean; name: string; sub: string; children: ReactNode }) {
+  return (
+    <div className="card flex flex-col overflow-hidden">
+      <Link to={to} className="group block aspect-[3/4] overflow-hidden bg-black/30" title={`open ${name} in the Library`}>
+        {image ? (
+          <img
+            src={image}
+            alt=""
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+            style={flip ? { transform: "scaleX(-1)" } : undefined}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-muted">
+            <ImageOff size={28} />
+          </div>
+        )}
+      </Link>
+      <div className="flex flex-1 flex-col gap-2 p-2.5">
+        <div className="min-w-0">
+          <Link to={to} className="line-clamp-2 min-h-[2.5rem] text-sm font-medium leading-tight hover:underline" title={name}>
+            {name}
+          </Link>
+          <div className="truncate text-xs text-muted" title={sub}>
+            {sub}
+          </div>
+        </div>
+        <div className="mt-auto">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const { data, isLoading } = useDashboard();
@@ -111,85 +147,33 @@ export default function Dashboard() {
           </div>
         )}
 
-        <div className="card">
-          <div className="border-b border-border px-4 py-2 text-sm font-medium">Pose categories</div>
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs text-muted">
-              <tr>
-                <th className="px-4 py-2 font-medium">Category</th>
-                <th className="px-4 py-2 font-medium">Photos</th>
-                <th className="px-4 py-2 font-medium">Reference</th>
-                <th className="px-4 py-2 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {data.categories.map((cat) => (
-                <tr key={cat.id} className="border-t border-border/60">
-                  <td className="px-4 py-2">
-                    <Link to={`/library?pose_id=${cat.id}`} className="hover:underline">
-                      {cat.name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2 tabular-nums">{cat.photo_count}</td>
-                  <td className="px-4 py-2">
-                    {cat.reference_photo_id ? (
-                      <img src={`/api/photos/${cat.reference_photo_id}/thumb`} className="h-10 w-8 rounded object-cover" alt="" />
-                    ) : (
-                      <span className="text-xs text-muted">{cat.photo_count ? "none yet (star a photo in the Library)" : "–"}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    {cat.photo_count > 0 && (
-                      <span className="inline-flex gap-1">
-                        <button className="btn btn-sm" disabled={!cat.reference_photo_id} onClick={() => run.mutate({ path: `/poses/${cat.id}/align` })}>
-                          <Crosshair size={12} /> align
-                        </button>
-                        <Link to={`/viewer?pose_id=${cat.id}`} className="btn btn-sm">
-                          <Play size={12} /> view
-                        </Link>
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              <tr className="border-t border-border/60">
-                <td className="px-4 py-2">
-                  <Link to="/library?pose_id=abs" className="hover:underline" title="every photo with visible abs, from any pose">
-                    Abs
-                  </Link>
-                </td>
-                <td className="px-4 py-2 tabular-nums">{data.abs.visible}</td>
-                <td className="px-4 py-2 text-xs text-muted">
-                  automatic (torso close-ups){data.abs.unchecked ? ` · ${data.abs.unchecked} not checked yet` : ""}
-                </td>
-                <td className="px-4 py-2 text-right">
-                  {data.abs.visible > 0 && (
-                    <Link to="/viewer?pose_id=abs" className="btn btn-sm">
-                      <Play size={12} /> view
-                    </Link>
-                  )}
-                </td>
-              </tr>
-              <tr className="border-t border-border/60">
-                <td className="px-4 py-2">
-                  <Link to="/library?pose_id=face" className="hover:underline" title="every photo where your face is visible, from any pose">
-                    Face
-                  </Link>
-                </td>
-                <td className="px-4 py-2 tabular-nums">{data.face.visible}</td>
-                <td className="px-4 py-2 text-xs text-muted">
-                  automatic (face close-ups){data.face.unchecked ? ` · ${data.face.unchecked} not checked yet` : ""}
-                </td>
-                <td className="px-4 py-2 text-right">
-                  {data.face.visible > 0 && (
-                    <Link to="/viewer?pose_id=face" className="btn btn-sm">
-                      <Play size={12} /> view
-                    </Link>
-                  )}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div>
+          <div className="mb-2 text-sm font-medium">Poses</div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            {data.categories.map((cat) => (
+              <PoseCard
+                key={cat.id}
+                to={`/library?pose_id=${cat.id}`}
+                image={cat.cover?.thumb_url ?? null}
+                flip={cat.cover?.flip_horizontal}
+                name={cat.name}
+                sub={`${cat.photo_count} photo${cat.photo_count === 1 ? "" : "s"}${cat.photo_count && !cat.reference_photo_id ? " · no reference" : ""}`}
+              >
+                <PoseActions poseId={cat.id} photoCount={cat.photo_count} hasReference={!!cat.reference_photo_id} stretch />
+              </PoseCard>
+            ))}
+            {(["abs", "face"] as const).map((g) => (
+              <PoseCard
+                key={g}
+                to={`/library?pose_id=${g}`}
+                image={data[g].cover_url}
+                name={g === "abs" ? "Abs" : "Face"}
+                sub={`${data[g].visible} photos · close-ups${data[g].unchecked ? ` · ${data[g].unchecked} not checked yet` : ""}`}
+              >
+                <PoseActions poseId={g} photoCount={data[g].visible} stretch />
+              </PoseCard>
+            ))}
+          </div>
         </div>
 
         {data.latest.length > 0 && (

@@ -22,6 +22,27 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _cover(s: Session, c: PoseCategory) -> dict[str, Any] | None:
+    """Card image for a pose: its reference photo (if still in the pose), else its most recent photo."""
+    p = s.get(Photo, c.reference_photo_id) if c.reference_photo_id else None
+    if p is None or p.pose_category_id != c.id:
+        p = s.exec(
+            select(Photo)
+            .where(Photo.pose_category_id == c.id, Photo.excluded == False)  # noqa: E712
+            .order_by(Photo.taken_at.desc().nulls_last(), Photo.id.desc())
+            .limit(1)
+        ).first()
+    return {"photo_id": p.id, "thumb_url": f"/api/photos/{p.id}/thumb", "flip_horizontal": p.flip_horizontal} if p else None
+
+
+def _closeup_cover(s: Session, column, kind: str) -> str | None:
+    """Card image for Abs / Face: the most recent close-up."""
+    p = s.exec(
+        select(Photo).where(column == True, Photo.excluded == False).order_by(Photo.taken_at.desc().nulls_last(), Photo.id.desc()).limit(1)  # noqa: E712
+    ).first()
+    return f"/api/photos/{p.id}/{kind}" if p else None
+
+
 @router.get("/dashboard")
 def dashboard(s: Session = Depends(get_session)) -> dict[str, Any]:
     total = s.exec(select(func.count(Photo.id))).one()
@@ -61,9 +82,9 @@ def dashboard(s: Session = Depends(get_session)) -> dict[str, Any]:
             }
     return {
         "counts": counts,
-        "categories": [category_out(c, per_pose.get(c.id, 0)) for c in cats],
-        "abs": abs_summary(s),
-        "face": face_summary(s),
+        "categories": [{**category_out(c, per_pose.get(c.id, 0)), "cover": _cover(s, c)} for c in cats],
+        "abs": {**abs_summary(s), "cover_url": _closeup_cover(s, Photo.abs_visible, "abs")},
+        "face": {**face_summary(s), "cover_url": _closeup_cover(s, Photo.face_visible, "face")},
         "date_span": {"first": first.isoformat() if first else None, "last": last.isoformat() if last else None},
         "latest": [photo_out(p) for p in latest],
         "weight": weight,

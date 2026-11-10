@@ -2,6 +2,16 @@
 
 Newest first. Each entry says what was done, what was verified, and what is next, so a new session can resume.
 
+## 2026-11-10 — Export settings
+- Viewer → Export now has: speed 0.05–60 photos/s (slider, presets, or "total length" which works out the speed); hold first / last photo; crossfade; boomerang; newest first; one photo per day / week / month and every Nth; shape original / 1:1 / 4:5 / 9:16 / 16:9 with fill (crop) or fit (bars, colour picker); any width; MP4 quality; caption title, top/bottom, text size; progress bar. Live estimate of photo count, length and size, a preview of shape and caption, settings remembered per browser, reset button.
+- Server: `ExportIn` fields above; `pick_photos`, `play_order`, `compose`, `output_size`, `draw_progress`; `frame_schedule` takes holds (default end hold unchanged: two photos' time); output frame rate rises up to 60 (MP4) / 50 (GIF) when the speed needs it.
+- Verified: 137 tests pass (3 new); a real 9:16 export of Front Double Bicep with every option on checked frame by frame (9.3 s as estimated). The dialog itself was not clicked through (no browser automation here).
+
+## 2026-11-10 — Pose cards on the Dashboard
+- Dashboard pose table replaced by a grid of cards: picture (reference photo if still in the pose, else the latest photo; latest close-up for Abs / Face), name (wraps to 2 lines), count, View + Align. Empty poses show a placeholder.
+- Library opened on one pose: the pose name is the page title, with the same View + Align buttons at the top (`PoseActions`, shared). Abs / Face get View only (their close-ups are aligned when found).
+- Settings → Pose examples list: 9 s → 0.4 s (leave-one-out check now in memory), and ✕ hides the example at once. 134 tests pass; Dashboard and Library screenshots checked.
+
 ## 2026-11-10 — Example-based pose matching, uploads
 - Classifier replaced: a photo goes to the pose whose examples its joints and arm angles are closest to (`PoseMatcher`, weighted pose distance: angles /30°, arm positions /0.3 torso lengths, facing /0.4; mean of the 2 nearest examples per pose; confidence d2/(d1+d2); further than 4.0 from every pose → Other). Left/right pairs share examples, mirrored. Leave-one-out on the 112 hand labels: 82 right vs 79 for the old kNN.
 - Examples now come from two places: hand-set library photos (as before) and images uploaded per pose on Settings → Pose examples (`pose_examples` table, files in data/examples/, landmarks run on upload, "no person found" rejected). `POST /poses/{id}/examples`, `DELETE /poses/examples/{id}`, thumb/image routes; deleting a category drops its uploads.

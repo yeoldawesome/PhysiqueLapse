@@ -220,9 +220,9 @@ export interface SystemInfo {
 
 export interface Dashboard {
   counts: Record<string, number>;
-  categories: Category[];
-  abs: { visible: number; checked: number; unchecked: number };
-  face: { visible: number; checked: number; unchecked: number };
+  categories: (Category & { cover: { photo_id: number; thumb_url: string; flip_horizontal: boolean } | null })[];
+  abs: { visible: number; checked: number; unchecked: number; cover_url: string | null };
+  face: { visible: number; checked: number; unchecked: number; cover_url: string | null };
   date_span: { first: string | null; last: string | null };
   latest: Photo[];
   weight: {

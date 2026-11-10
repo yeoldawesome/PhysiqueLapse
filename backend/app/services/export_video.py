@@ -69,22 +69,25 @@ def caption_lines(p: Photo, first: datetime, opts: dict[str, Any], stats: list[d
     return lines
 
 
-def draw_caption(img: Image.Image, lines: list[str]) -> Image.Image:
+def draw_caption(img: Image.Image, lines: list[str], position: str = "bottom", scale: float = 1.0) -> Image.Image:
     if not lines:
         return img
     W, H = img.size
-    size = max(14, round(H * 0.032))
+    size = max(10, round(min(H, W * 1.6) * 0.032 * scale))
     font = load_font(size)
     pad = round(size * 0.6)
     line_h = round(size * 1.3)
-    box_h = pad * 2 + line_h * len(lines)
+    box_h = min(H, pad * 2 + line_h * len(lines))
     overlay = Image.new("RGBA", (W, box_h), (0, 0, 0, 0))
     grad = np.linspace(0, 170, box_h, dtype=np.uint8)
+    if position == "top":
+        grad = grad[::-1]
     overlay.putalpha(Image.fromarray(np.repeat(grad[:, None], W, axis=1)))
     out = img.convert("RGBA")
-    out.alpha_composite(overlay, (0, H - box_h))
+    top = 0 if position == "top" else H - box_h
+    out.alpha_composite(overlay, (0, top))
     d = ImageDraw.Draw(out)
-    y = H - box_h + pad
+    y = top + pad
     for ln in lines:
         d.text((pad + 2, y + 2), ln, font=font, fill=(0, 0, 0, 160))
         d.text((pad, y), ln, font=font, fill=(255, 255, 255, 255))
@@ -92,25 +95,102 @@ def draw_caption(img: Image.Image, lines: list[str]) -> Image.Image:
     return out.convert("RGB")
 
 
-def frame_schedule(n: int, fps: float, crossfade: float, out_fps: int) -> list[tuple[int, int, float]]:
+def draw_progress(img: Image.Image, frac: float) -> Image.Image:
+    """Thin bar along the bottom edge, filled to `frac`."""
+    W, H = img.size
+    h = max(3, round(H * 0.006))
+    out = img.copy()
+    d = ImageDraw.Draw(out)
+    d.rectangle((0, H - h, W, H), fill=(40, 40, 40))
+    d.rectangle((0, H - h, round(W * max(0.0, min(1.0, frac))), H), fill=(255, 255, 255))
+    return out
+
+
+ASPECTS = {"1:1": 1.0, "4:5": 4 / 5, "9:16": 9 / 16, "16:9": 16 / 9}
+
+
+def output_size(width: int, canvas_w: int, canvas_h: int, aspect: str) -> tuple[int, int]:
+    """Even (W, H) for the chosen width and shape."""
+    W = max(64, width - width % 2)
+    ratio = ASPECTS.get(aspect, canvas_w / canvas_h)
+    H = round(W / ratio)
+    return W, H - H % 2
+
+
+def compose(img: Image.Image, W: int, H: int, fit: str = "fill", background: str = "#000000") -> Image.Image:
+    """Put a frame into a W x H output: "fill" scales to cover and crops the centre, "fit"
+    scales to fit inside and adds bars in the background colour."""
+    iw, ih = img.size
+    if (iw, ih) == (W, H):
+        return img
+    if abs(iw / ih - W / H) < 1e-3:
+        return img.resize((W, H), Image.Resampling.LANCZOS)
+    if fit == "fit":
+        sc = min(W / iw, H / ih)
+        im = img.resize((max(1, round(iw * sc)), max(1, round(ih * sc))), Image.Resampling.LANCZOS)
+        bg = tuple(int(background[i : i + 2], 16) for i in (1, 3, 5))
+        out = Image.new("RGB", (W, H), bg)
+        out.paste(im, ((W - im.width) // 2, (H - im.height) // 2))
+        return out
+    sc = max(W / iw, H / ih)
+    im = img.resize((max(W, round(iw * sc)), max(H, round(ih * sc))), Image.Resampling.LANCZOS)
+    x, y = (im.width - W) // 2, (im.height - H) // 2
+    return im.crop((x, y, x + W, y + H))
+
+
+def pick_photos(photos: list[Photo], every: str = "all", step: int = 1, reverse: bool = False) -> list[Photo]:
+    """At most one photo per day / week / month (the first of each), then every Nth, optionally newest first."""
+    if every != "all":
+        seen, kept = set(), []
+        for p in photos:
+            d = p.taken_at.date() if p.taken_at else None
+            key = None if d is None else d if every == "day" else d.isocalendar()[:2] if every == "week" else (d.year, d.month)
+            if key is not None and key in seen:
+                continue
+            seen.add(key)
+            kept.append(p)
+        photos = kept
+    photos = photos[:: max(1, step)]
+    return photos[::-1] if reverse else photos
+
+
+def play_order(n: int, boomerang: bool = False) -> list[int]:
+    """Indices in playing order: 0..n-1, and with boomerang back down to 0 (ends not repeated)."""
+    order = list(range(n))
+    if boomerang and n > 2:
+        order += list(range(n - 2, -1, -1))
+    elif boomerang and n == 2:
+        order += [0]
+    return order
+
+
+def frame_schedule(
+    n: int, fps: float, crossfade: float, out_fps: int, hold_start: float = 0.0, hold_end: float | None = None
+) -> list[tuple[int, int, float]]:
     """Output frame list of (index_a, index_b, alpha): alpha 0 -> pure a.
 
     Photo i starts at output frame round(i * out_fps / fps), so the total length is
     exact for any fps. When crossfade > 0 the last min(crossfade, 0.9/fps) seconds of
-    each hold blend into the next photo. The final photo lingers for one extra hold.
+    each hold blend into the next photo. The first photo stays `hold_start` seconds
+    longer; the last one is shown for `hold_end` seconds in all (default: two photos' time).
+    Above out_fps photos per second some photos get no frame of their own (the video
+    cannot show more photos per second than it has frames).
     """
     if n <= 0:
         return []
-    starts = [round(i * out_fps / fps) for i in range(n + 2)]
+    starts = [round(i * out_fps / fps) for i in range(n + 1)]
     want = 0 if crossfade <= 0 else max(1, round(min(crossfade, 0.9 / fps) * out_fps))
     out: list[tuple[int, int, float]] = []
-    for i in range(n):
-        length = max(1, starts[i + 1] - starts[i])
-        last = i == n - 1
-        fade = 0 if last else min(length - 1, want)
+    out.extend((0, 0, 0.0) for _ in range(round(hold_start * out_fps)))
+    for i in range(n - 1):
+        length = starts[i + 1] - starts[i]
+        if length <= 0:
+            continue  # faster than the frame rate: this photo is skipped
+        fade = min(length - 1, want)
         out.extend((i, i, 0.0) for _ in range(length - fade))
         out.extend((i, i + 1, (k + 1) / (fade + 1)) for k in range(fade))
-    out.extend((n - 1, n - 1, 0.0) for _ in range(max(1, starts[n + 1] - starts[n])))
+    end = round(2 * out_fps / fps) if hold_end is None else round(hold_end * out_fps)
+    out.extend((n - 1, n - 1, 0.0) for _ in range(max(1, end)))
     return out
 
 
@@ -194,31 +274,49 @@ def job_export(ctx: JobContext, params: dict) -> dict:
             canvas_w, canvas_h = settings.canvas_w, settings.canvas_h
         if not photos:
             raise ValueError("no aligned frames in this range; run alignment first")
+        before = len(photos)
+        first = photos[0].taken_at  # day numbers count from the first photo, whatever is picked below
+        photos = pick_photos(photos, prm.get("every", "all"), int(prm.get("step", 1)), bool(prm.get("reverse")))
+        thinned = before - len(photos)
         fmt = prm.get("format", "mp4")
         fps = float(prm.get("fps", 2.0))
         crossfade = float(prm.get("crossfade", 0.0))
         cap = prm.get("caption") or {}
         width = int(prm.get("width") or canvas_w)
-        W = max(64, width - width % 2)
-        H = round(canvas_h * W / canvas_w)
-        H -= H % 2
-        first = photos[0].taken_at
+        W, H = output_size(width, canvas_w, canvas_h, prm.get("aspect", "original"))
+        fit, bg = prm.get("fit", "fill"), prm.get("background", "#000000")
+        title = (cap.get("title") or "").strip()
+        bar = bool(prm.get("progress_bar"))
         metric_ids = [int(m) for m in cap.get("metrics", [])]
         ctx.progress(0, len(photos), "Rendering frames")
         frames: list[np.ndarray] = []
         for i, p in enumerate(photos, 1):
             ctx.check_cancelled()
             with Image.open(frame_path(p)) as im:
-                img = im.convert("RGB").resize((W, H), Image.Resampling.LANCZOS)
+                img = compose(im.convert("RGB"), W, H, fit, bg)
             lines = caption_lines(p, first, cap, _stats_for(s, p, metric_ids, settings.stats_window_days))
-            frames.append(np.asarray(draw_caption(img, lines)))
+            if title:
+                lines = [title, *lines]
+            img = draw_caption(img, lines, cap.get("position", "bottom"), float(cap.get("size", 1.0)))
+            if bar:
+                img = draw_progress(img, (i - 1) / max(1, len(photos) - 1))
+            frames.append(np.asarray(img))
             ctx.progress(i, len(photos))
         ex.status = "running"
         s.add(ex)
         s.commit()
 
-    out_fps = MP4_FPS if fmt == "mp4" else GIF_FPS
-    sched = frame_schedule(len(frames), fps, crossfade, out_fps)
+    import math
+
+    # enough output frames per second to show every photo when the speed is high
+    out_fps = max(MP4_FPS, min(60, math.ceil(fps))) if fmt == "mp4" else max(GIF_FPS, min(50, math.ceil(fps)))
+    order = play_order(len(frames), bool(prm.get("boomerang")))
+    hold_end = prm.get("hold_end")
+    sched = [
+        (order[a], order[b], t)
+        for a, b, t in frame_schedule(len(order), fps, crossfade, out_fps, float(prm.get("hold_start") or 0), None if hold_end is None else float(hold_end))
+    ]
+    quality = int(prm.get("quality", 8))
     name = f"{cat_name.replace(' ', '_')}_{datetime.now():%Y%m%d_%H%M%S}.{fmt}"
     safe = "".join(ch for ch in name if ch.isalnum() or ch in "._-")
     path = config.EXPORTS_DIR / safe
@@ -237,7 +335,7 @@ def job_export(ctx: JobContext, params: dict) -> dict:
 
             os.environ.setdefault("IMAGEIO_FFMPEG_EXE", ffmpeg_exe())
             w = imageio_ffmpeg.write_frames(
-                str(tmp), (W, H), fps=out_fps, codec="libx264", pix_fmt_out="yuv420p", quality=8, macro_block_size=2,
+                str(tmp), (W, H), fps=out_fps, codec="libx264", pix_fmt_out="yuv420p", quality=quality, macro_block_size=2,
                 output_params=["-movflags", "+faststart", "-f", "mp4"],
             )
             w.send(None)
@@ -277,10 +375,20 @@ def job_export(ctx: JobContext, params: dict) -> dict:
         ex.status = "done"
         s.add(ex)
         s.commit()
-    msg = f"{fmt.upper()} with {len(frames)} photos ({path.stat().st_size / 1e6:.1f} MB)"
+    msg = f"{fmt.upper()}, {len(sched) / out_fps:.1f} s, {len(frames)} photos ({path.stat().st_size / 1e6:.1f} MB)"
     if skipped:
         msg += f"; {skipped} photos left out (not aligned or outside the pose-match limit)"
-    return {"message": msg, "export_id": export_id, "frames": len(frames), "skipped": skipped, "path": str(path)}
+    if thinned:
+        msg += f"; {thinned} skipped by the one-per-period / every-Nth setting"
+    return {
+        "message": msg,
+        "export_id": export_id,
+        "frames": len(frames),
+        "skipped": skipped,
+        "thinned": thinned,
+        "seconds": round(len(sched) / out_fps, 2),
+        "path": str(path),
+    }
 
 
 def export_out(ex: Export) -> dict[str, Any]:

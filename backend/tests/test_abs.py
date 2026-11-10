@@ -111,7 +111,9 @@ def test_classify_also_checks_abs_and_dashboard_lists_it(client, tmp_path):
         deadline = time.time() + 20
         while client.get("/api/abs/summary").json()["checked"] < 2 and time.time() < deadline:
             time.sleep(0.1)
-        assert client.get("/api/dashboard").json()["abs"] == {"visible": 1, "checked": 2, "unchecked": 0}
+        dash = client.get("/api/dashboard").json()
+        assert dash["abs"] == {"visible": 1, "checked": 2, "unchecked": 0, "cover_url": dash["abs"]["cover_url"]}
+        assert dash["abs"]["cover_url"].endswith("/abs")  # the card shows the latest abs close-up
     finally:
         set_backend_for_tests(None, key=None)
         set_scorer_for_tests(None)

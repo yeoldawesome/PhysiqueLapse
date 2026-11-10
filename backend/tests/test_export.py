@@ -111,3 +111,72 @@ def test_export_without_frames_fails_cleanly(client):
     r = client.post("/api/exports", json={"pose_id": cat["id"], "format": "mp4"})
     j = _wait(client, r.json()["job"]["id"])
     assert j["status"] == "failed" and "no aligned frames" in j["error"]
+
+
+def test_schedule_holds_order_and_fast_speeds():
+    # 2 extra seconds on the first photo, 3 on the last
+    s = EX.frame_schedule(3, fps=2, crossfade=0, out_fps=30, hold_start=2, hold_end=3)
+    assert len(s) == 60 + 2 * 15 + 90
+    assert s[0] == (0, 0, 0.0) and s[59] == (0, 0, 0.0) and s[-1] == (2, 2, 0.0)
+    # faster than the frame rate: length stays exact, some photos get no frame
+    s = EX.frame_schedule(120, fps=60, crossfade=0, out_fps=30)
+    assert abs(len(s) - (119 / 60 * 30 + 1)) <= 1
+    assert EX.play_order(4, boomerang=True) == [0, 1, 2, 3, 2, 1, 0]
+    assert EX.play_order(3) == [0, 1, 2]
+
+
+def test_pick_photos_and_shapes():
+    from app.models import Photo
+
+    base = datetime(2024, 1, 1, 9)
+    ps = [Photo(id=i, taken_at=base + timedelta(hours=12 * i)) for i in range(30)]  # 2 per day, 15 days
+    assert len(EX.pick_photos(ps, "day")) == 15
+    assert len(EX.pick_photos(ps, "week")) == 3  # ISO weeks of Jan 1–15, 2024
+    assert len(EX.pick_photos(ps, "month")) == 1
+    assert [p.id for p in EX.pick_photos(ps, "all", step=10)] == [0, 10, 20]
+    assert [p.id for p in EX.pick_photos(ps, "all", step=10, reverse=True)] == [20, 10, 0]
+
+    assert EX.output_size(1080, 1080, 1350, "original") == (1080, 1350)
+    assert EX.output_size(1080, 1080, 1350, "9:16") == (1080, 1920)
+    assert EX.output_size(720, 1080, 1350, "1:1") == (720, 720)
+    img = Image.new("RGB", (400, 500), (200, 50, 50))
+    filled = EX.compose(img, 400, 400, "fill")
+    assert filled.size == (400, 400) and filled.getpixel((0, 0)) == (200, 50, 50)
+    fitted = EX.compose(img, 400, 400, "fit", "#00ff00")
+    assert fitted.size == (400, 400) and fitted.getpixel((0, 200)) == (0, 255, 0)  # side bar
+
+    top = np.asarray(EX.draw_caption(Image.new("RGB", (540, 675), (128, 128, 128)), ["Title"], position="top"))
+    assert (top[:60].max(axis=2) > 230).any() and (top[-200:] == 128).all()
+    bar = np.asarray(EX.draw_progress(Image.new("RGB", (100, 100), (0, 0, 0)), 0.5))
+    assert bar[-1, 10].tolist() == [255, 255, 255] and bar[-1, 90].tolist() == [40, 40, 40]
+
+
+def test_export_with_all_options(client):
+    cid = _seed_sequence(client, 30)
+    r = client.post(
+        "/api/exports",
+        json={
+            "pose_id": cid, "format": "mp4", "fps": 45, "width": 360, "quality": 5,
+            "hold_start": 1, "hold_end": 2, "every": "week", "step": 1, "reverse": True, "boomerang": True,
+            "aspect": "9:16", "fit": "fit", "background": "#202020", "progress_bar": True,
+            "caption": {"date": True, "days": True, "title": "Cut 2024", "position": "top", "size": 1.5},
+        },
+    )
+    assert r.status_code == 200, r.text
+    j = _wait(client, r.json()["job"]["id"])
+    assert j["status"] == "done", j
+    res = j["result"]
+    assert res["frames"] < 30 and res["thinned"] == 30 - res["frames"]  # one per week
+    n = res["frames"]
+    expect = 1 + (2 * n - 2) / 45 + 2  # start hold + boomerang photos at 45/s + end hold
+    assert abs(res["seconds"] - expect) < 0.15, (res, expect)
+    ex = next(e for e in client.get("/api/exports").json() if e["id"] == r.json()["export"]["id"])
+    import imageio_ffmpeg
+
+    reader = imageio_ffmpeg.read_frames(str(config.abs_path(ex["path"])))
+    meta = next(reader)
+    assert tuple(meta["size"]) == (360, 640) and meta["fps"] == 45
+    reader.close()
+    # out-of-range values are rejected
+    assert client.post("/api/exports", json={"pose_id": cid, "fps": 61}).status_code == 422
+    assert client.post("/api/exports", json={"pose_id": cid, "aspect": "2:1"}).status_code == 422
