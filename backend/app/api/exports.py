@@ -47,6 +47,7 @@ class ExportIn(BaseModel):
     fit: str = Field("fill", pattern="^(fill|fit)$")  # fill = crop to the shape, fit = add bars
     background: str = Field("#000000", pattern="^#[0-9a-fA-F]{6}$")  # bar colour for "fit"
     quality: int = Field(8, ge=1, le=10)  # MP4 quality (10 = best, biggest file)
+    frame_rate: int | None = Field(None, ge=5, le=60)  # video frames per second; None = automatic (GIF max 50)
     progress_bar: bool = False  # thin bar along the bottom showing how far through the time-lapse
     max_pose_diff_pct: float | None = Field(None, gt=0, le=200)
     hide_sleeves: bool = False  # leave out photos whose arms are covered by clothing

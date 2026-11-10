@@ -308,8 +308,11 @@ def job_export(ctx: JobContext, params: dict) -> dict:
 
     import math
 
-    # enough output frames per second to show every photo when the speed is high
-    out_fps = max(MP4_FPS, min(60, math.ceil(fps))) if fmt == "mp4" else max(GIF_FPS, min(50, math.ceil(fps)))
+    # the user's frame rate, else enough output frames per second to show every photo when the speed is high
+    if prm.get("frame_rate"):
+        out_fps = int(prm["frame_rate"]) if fmt == "mp4" else min(50, int(prm["frame_rate"]))
+    else:
+        out_fps = max(MP4_FPS, min(60, math.ceil(fps))) if fmt == "mp4" else max(GIF_FPS, min(50, math.ceil(fps)))
     order = play_order(len(frames), bool(prm.get("boomerang")))
     hold_end = prm.get("hold_end")
     sched = [
@@ -387,6 +390,7 @@ def job_export(ctx: JobContext, params: dict) -> dict:
         "skipped": skipped,
         "thinned": thinned,
         "seconds": round(len(sched) / out_fps, 2),
+        "frame_rate": out_fps,
         "path": str(path),
     }
 

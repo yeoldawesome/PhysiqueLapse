@@ -26,6 +26,7 @@ type Opts = {
   fit: "fill" | "fit";
   background: string;
   quality: number;
+  frameRate: number | null; // null = automatic
   crossfade: number;
   holdStart: number;
   holdEnd: number;
@@ -52,6 +53,7 @@ const DEFAULTS: Opts = {
   fit: "fill",
   background: "#000000",
   quality: 8,
+  frameRate: null,
   crossfade: 0.2,
   holdStart: 0,
   holdEnd: 1,
@@ -179,6 +181,9 @@ export default function ExportDialog({
   const width = o.format === "gif" ? Math.min(o.width, 720) : o.width;
   const height = Math.round(width / ratio / 2) * 2;
   const lengthTooShort = o.speedBy === "length" && o.lengthSec <= fixed;
+  // video frame rate: same rule as the server (automatic = enough frames to show every photo)
+  const autoRate = o.format === "mp4" ? Math.max(30, Math.min(60, Math.ceil(fps))) : Math.max(15, Math.min(50, Math.ceil(fps)));
+  const outRate = o.frameRate ? (o.format === "gif" ? Math.min(50, o.frameRate) : o.frameRate) : autoRate;
 
   const start = async () => {
     setBusy(true);
@@ -202,6 +207,7 @@ export default function ExportDialog({
         fit: o.fit,
         background: o.background,
         quality: o.quality,
+        frame_rate: o.frameRate,
         progress_bar: o.progressBar,
         caption: { date: o.capDate, days: o.capDays, metrics: o.capMetrics, title: o.title, position: o.capPosition, size: o.capSize },
         max_pose_diff_pct: maxPoseDiff ?? null,
@@ -323,7 +329,7 @@ export default function ExportDialog({
           <Section title="Frame">
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Field label="Format">
-                <select className="select" value={o.format} onChange={(e) => set("format", e.target.value as Opts["format"])}>
+                <select className="select" value={o.format} onChange={(e) => setO((p) => ({ ...p, format: e.target.value as Opts["format"], frameRate: null }))}>
                   <option value="mp4">MP4 video</option>
                   <option value="gif">GIF</option>
                 </select>
@@ -352,7 +358,23 @@ export default function ExportDialog({
               ) : (
                 <span />
               )}
+              <Field label="Frame rate" hint="video frames per second; higher = smoother fades">
+                <select className="select" value={o.frameRate ?? ""} onChange={(e) => set("frameRate", e.target.value ? Number(e.target.value) : null)}>
+                  <option value="">auto ({autoRate} fps)</option>
+                  {(o.format === "mp4" ? [24, 25, 30, 50, 60] : [10, 12, 15, 20, 25, 30, 50]).map((r) => (
+                    <option key={r} value={r}>
+                      {r} fps
+                    </option>
+                  ))}
+                </select>
+              </Field>
             </div>
+            {fps > outRate && (
+              <div className="mt-2 text-[11px] text-warn">
+                {fps.toFixed(1)} photos per second is faster than {outRate} frames per second, so some photos won't get a frame of their own. Raise the frame rate
+                or slow down to show every photo.
+              </div>
+            )}
             {o.aspect !== "original" && (
               <div className="mt-2 flex flex-wrap items-center gap-4">
                 <div className="flex gap-1">
@@ -440,6 +462,10 @@ export default function ExportDialog({
             <div className="flex justify-between">
               <span className="text-muted">Speed</span>
               <span className="tabular-nums">{fps.toFixed(fps < 2 ? 2 : 1)} /s</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Frame rate</span>
+              <span className="tabular-nums">{outRate} fps</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted">Size</span>

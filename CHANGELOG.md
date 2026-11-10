@@ -2,6 +2,10 @@
 
 Newest first. Each entry says what was done, what was verified, and what is next, so a new session can resume.
 
+## 2026-11-10 — Export frame rate
+- Export window → Frame → Frame rate: auto (as before: 30 for MP4 / 15 for GIF, raised up to 60 / 50 when the photo speed needs it) or a fixed 24/25/30/50/60 (MP4) or 10–50 (GIF). Warns when photos per second exceed frames per second (some photos would get no frame). Length is unchanged by the frame rate. `ExportIn.frame_rate`; 139 tests pass.
+- Switched the working copy back to `main` (the `githubpages` branch pointed at the same commit; left in place).
+
 ## 2026-11-10 — Poses stay as the user left them; New pose; export preview
 - Fixed: every server start re-created deleted built-in poses and reset their order. Built-ins are now offered once (setting `builtin_categories_offered`; existing libraries count all current built-ins as offered); later versions can still add new built-ins once. Deletes, renames, order and user poses survive restarts (test). The re-created Back Double Bicep was deleted again (DB copy before: scratchpad physiquelapse.before-offered.db).
 - New pose: a "New pose" card at the end of the Dashboard grid and a box in Settings → Pose examples; both jump to the new pose's examples (`/settings#pose-<id>`). Empty pose cards link there too.

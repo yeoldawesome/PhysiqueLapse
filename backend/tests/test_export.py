@@ -180,3 +180,20 @@ def test_export_with_all_options(client):
     # out-of-range values are rejected
     assert client.post("/api/exports", json={"pose_id": cid, "fps": 61}).status_code == 422
     assert client.post("/api/exports", json={"pose_id": cid, "aspect": "2:1"}).status_code == 422
+
+
+def test_export_frame_rate_setting(client):
+    import imageio_ffmpeg
+
+    cid = _seed_sequence(client, 30)
+    for rate in (24, 60):
+        r = client.post("/api/exports", json={"pose_id": cid, "format": "mp4", "fps": 4, "width": 270, "frame_rate": rate})
+        j = _wait(client, r.json()["job"]["id"])
+        assert j["status"] == "done", j
+        assert j["result"]["frame_rate"] == rate
+        ex = next(e for e in client.get("/api/exports").json() if e["id"] == r.json()["export"]["id"])
+        reader = imageio_ffmpeg.read_frames(str(config.abs_path(ex["path"])))
+        assert next(reader)["fps"] == rate
+        reader.close()
+        assert abs(j["result"]["seconds"] - (30 + 1) / 4) < 0.1  # same length whatever the frame rate
+    assert client.post("/api/exports", json={"pose_id": cid, "frame_rate": 120}).status_code == 422
