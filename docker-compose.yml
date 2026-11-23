@@ -66,6 +66,9 @@ services:
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+      # HTTP/2 over TCP: on this home connection QUIC (UDP) streams kept being cancelled and
+      # pages crawled at ~1 KB/s; http2 is the tunnel's standard fallback (PL_TUNNEL_PROTOCOL=quic to undo)
+      TUNNEL_TRANSPORT_PROTOCOL: ${PL_TUNNEL_PROTOCOL:-http2}
     depends_on:
       physiquelapse:
         condition: service_healthy
