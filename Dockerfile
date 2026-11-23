@@ -23,7 +23,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DATA_DIR=/data \
     PORT=8420 \
     HF_HUB_OFFLINE=1 \
-    HF_HUB_DISABLE_TELEMETRY=1
+    HF_HUB_DISABLE_TELEMETRY=1     MPLCONFIGDIR=/tmp/matplotlib
 
 # OpenCV / MediaPipe runtime libraries
 RUN apt-get update \

@@ -2,6 +2,16 @@
 
 Newest first. Each entry says what was done, what was verified, and what is next, so a new session can resume.
 
+## 2026-11-23 — Server mode, milestone 4: phone layout + installable app
+- Phone layout (below 768 px): bottom tab bar (Home, Library, Upload, Viewer, More), "More" sheet with every page and Log out, safe-area insets (notch / home bar), job panel full-width above the tab bar, page headers wrap. Desktop layout unchanged.
+- Library: filters fold behind a Filters button, 3-column grid, photo drawer opens full screen; touch: long-press selects a photo, and while anything is selected a tap adds/removes instead of opening.
+- Viewer: swipe left/right on the photo steps through frames, date/day line above the transport, side panel (modes, playback, measurements) behind a button; Alignment editor panel stacks under the photo.
+- Fixed a CSS precedence bug: `.btn`, `.input`, `.select`, `.card` etc. were unlayered, so utility classes on the same element lost (e.g. `pl-7` on the Library search box, whose icon overlapped the text). They now live in `@layer components`.
+- Installable app (PWA): `manifest.webmanifest` (standalone, portrait), icons (192/512, maskable, apple-touch), iOS meta tags, a service worker that caches nothing (registered only over HTTPS, so never in the desktop app). The server sends the manifest with its MIME type and `sw.js` with `no-cache`.
+- Docker: `MPLCONFIGDIR=/tmp/matplotlib` (MediaPipe imports matplotlib, which complained it couldn't write its cache).
+- Caching: thumbnails/previews were already immutable with ETag; aligned frames are versioned (`?v=`), so nothing else was needed.
+- Verified with phone-emulation screenshots (390×844, touch) of every page on the real library, and desktop screenshots (1440×900) for regressions; no page overflows horizontally. Not yet tried on a real phone.
+
 ## 2026-11-23 — Server mode, milestone 2: browser upload + auto-processing
 - Resumable chunked uploads (`POST /imports/upload-session/{id}/files/init`, `PUT …/files/{fileId}?offset=`, `GET …/files/{fileId}`, `GET /imports/upload-session/{id}`): 8 MB chunks, the offset must match what the server has (a repeated chunk gets 409 with the right offset), the same file announced again resumes, bytes collect in `incoming/<session>/.parts/` and move into the staging tree when complete, then the existing import job runs. Type allow-list (images only) and a per-file cap (`PL_MAX_UPLOAD_MB`, default 300). Schema v10 (`upload_items`).
 - Frontend uploader now always uses it: 2 files at a time, up to 8 retries per chunk with backoff, asks the server how far it got after an error, and reuses an interrupted (still open) session after a reload. Camera-roll picker on phones; partial failures are reported without losing the files that made it.

@@ -42,6 +42,12 @@ const router = createBrowserRouter([
   },
 ]);
 
+// Installable as a home-screen app when served over HTTPS (the home server). The worker caches
+// nothing. The desktop app runs on plain http://127.0.0.1 and never registers it.
+if ("serviceWorker" in navigator && window.location.protocol === "https:") {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>

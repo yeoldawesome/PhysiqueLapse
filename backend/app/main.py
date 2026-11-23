@@ -12,6 +12,8 @@ from contextlib import asynccontextmanager
 os.environ["FASTAPI_OTEL_AUTO_CONFIGURE"] = "false"
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
+import mimetypes
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +23,8 @@ from .db import init_db
 from .jobs import runner
 
 log = logging.getLogger("physiquelapse")
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+mimetypes.add_type("text/javascript", ".js")  # Windows registries sometimes map .js to text/plain
 
 
 def _register_job_handlers() -> None:
@@ -101,7 +105,9 @@ def create_app() -> FastAPI:
             except ValueError:
                 raise HTTPException(404) from None
             if candidate.is_file():
-                return FileResponse(candidate)
+                # the service worker and manifest must be re-checked, never served from a stale cache
+                fresh = candidate.name in ("sw.js", "manifest.webmanifest")
+                return FileResponse(candidate, headers={"Cache-Control": "no-cache"} if fresh else None)
         if index.exists():
             return FileResponse(index, headers={"Cache-Control": "no-cache"})
         return JSONResponse(
