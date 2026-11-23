@@ -6,6 +6,7 @@ export interface AuthStatus {
   auth_required: boolean;
   password_set: boolean;
   logged_in: boolean;
+  path_import: boolean;
 }
 
 export function useAuthStatus() {

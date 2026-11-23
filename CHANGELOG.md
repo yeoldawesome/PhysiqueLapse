@@ -2,6 +2,14 @@
 
 Newest first. Each entry says what was done, what was verified, and what is next, so a new session can resume.
 
+## 2026-11-23 — Server mode, milestone 2: browser upload + auto-processing
+- Resumable chunked uploads (`POST /imports/upload-session/{id}/files/init`, `PUT …/files/{fileId}?offset=`, `GET …/files/{fileId}`, `GET /imports/upload-session/{id}`): 8 MB chunks, the offset must match what the server has (a repeated chunk gets 409 with the right offset), the same file announced again resumes, bytes collect in `incoming/<session>/.parts/` and move into the staging tree when complete, then the existing import job runs. Type allow-list (images only) and a per-file cap (`PL_MAX_UPLOAD_MB`, default 300). Schema v10 (`upload_items`).
+- Frontend uploader now always uses it: 2 files at a time, up to 8 retries per chunk with backoff, asks the server how far it got after an error, and reuses an interrupted (still open) session after a reload. Camera-roll picker on phones; partial failures are reported without losing the files that made it.
+- Auto-processing: setting `auto_process_uploads` (unset = on in server mode, off in the desktop app). After an upload the new photos only go landmarks → classify → align, through a generic job chain (`chain` param / `JobRunner.enqueue_chain`); the job drawer shows each step.
+- HEIC: `GET /photos/{id}/original` serves a full-resolution upright JPEG (EXIF dates kept, cached in `derived/fullres`) for HEIC/HEIF originals or with `?as_jpeg=1`; the original stays byte-identical on disk.
+- Server mode: reading server folders (import by path, folder browser, Snapchat folder scan, zip by path) only inside `PL_IMPORT_ROOTS` (off by default; the Import page hides the folder box); the one-shot multipart upload refuses non-images and files over the cap.
+- Verified: 167 tests pass in both modes (8 new: chunked upload + resume + duplicate chunk + import, limits, path traversal stays in staging, committed session refuses files, HEIC date + JPEG view, auto-chain runs only on the new photos in order, default per mode, path imports vs. allowed roots); frontend typechecks and builds.
+
 ## 2026-11-23 — Server mode, milestone 1: Docker + login + HTTPS docs
 - Plan for the home-server version (same codebase, `PL_MODE=server`): M1 Docker + login, M2 browser upload + auto-processing, M3 benchmark + GPU, M4 mobile/PWA, M5 Capture page (reference mode), M6 daily mode + flipbook, M7 in-browser pose matching. Each milestone goes on a short `feat/*` branch off `main`.
 - Server checked over SSH (read-only): Ubuntu 26.04.1, 8 CPUs, 30 GiB; the other app (Better Lift: PocketBase 127.0.0.1:8090, push 127.0.0.1:8092, cloudflared) is systemd, not Docker; Docker not installed; no `tailscale serve` config; tailnet HTTPS certificates not enabled; RTX 3060 Ti without a driver (recommended `nvidia-driver-595-open`); host clock UTC.

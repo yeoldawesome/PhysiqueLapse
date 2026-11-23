@@ -32,8 +32,13 @@ export default function Uploader() {
     if (images.length === 0) return;
     setProgress({ sent: 0, total: images.length, bytesSent: 0, bytesTotal: bytes, phase: "staging" });
     try {
-      const r = await uploadFiles(images, setProgress);
-      toast.success(`${images.length} files uploaded, importing (job #${r.job.id})`);
+      let warning: string | undefined;
+      const r = await uploadFiles(images, (p) => {
+        warning = p.error;
+        setProgress(p);
+      });
+      if (warning) toast.error(warning);
+      else toast.success(`${images.length} files uploaded, importing (job #${r.job.id})`);
       setPicked([]);
       qc.invalidateQueries({ queryKey: ["jobs"] });
       qc.invalidateQueries({ queryKey: ["imports"] });
@@ -48,7 +53,7 @@ export default function Uploader() {
       <div className="mb-3 flex items-center gap-2">
         <Upload size={16} className="text-accent" />
         <h2 className="font-medium">Upload from this browser</h2>
-        <span className="text-xs text-muted">JPG · PNG · HEIC · WEBP · folders keep their structure</span>
+        <span className="text-xs text-muted">JPG · PNG · HEIC · WEBP · big batches resume if the connection drops</span>
       </div>
       <div
         className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
@@ -66,7 +71,7 @@ export default function Uploader() {
         }}
       >
         <ImagePlus size={28} className="text-muted" />
-        <div className="text-sm">Drop photos or folders here</div>
+        <div className="text-sm">Drop photos or folders here, or pick from your camera roll</div>
         <div className="flex gap-2">
           <button className="btn btn-sm" onClick={() => fileInput.current?.click()} disabled={busy}>
             Choose files
@@ -122,7 +127,7 @@ export default function Uploader() {
             <span>
               {progress.phase === "staging" && `Uploading ${progress.sent}/${progress.total} files`}
               {progress.phase === "committing" && "Starting import…"}
-              {progress.phase === "done" && "Uploaded. Import running in the background."}
+              {progress.phase === "done" && (progress.error ? <span className="text-warn">{progress.error}</span> : "Uploaded. Import running in the background.")}
               {progress.phase === "error" && <span className="text-danger">{progress.error}</span>}
             </span>
             <span className="tabular-nums">{progress.bytesTotal > 0 ? `${Math.round((progress.bytesSent / progress.bytesTotal) * 100)}%` : ""}</span>

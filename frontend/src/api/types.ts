@@ -203,6 +203,7 @@ export interface Settings {
   playback_fps: number;
   playback_crossfade: boolean;
   skip_near_duplicates: boolean;
+  auto_process_uploads: boolean | null;
 }
 
 export interface SystemInfo {

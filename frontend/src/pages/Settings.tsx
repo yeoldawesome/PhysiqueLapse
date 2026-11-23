@@ -5,6 +5,7 @@ import type { Category, Settings as S } from "../api/types";
 import { ConfirmButton, Field, PageHeader, Spinner, Toggle } from "../components/ui";
 import { fmtBytes } from "../lib/format";
 import PoseTeaching from "../components/PoseTeaching";
+import { useServerMode } from "../api/auth";
 
 function CategoryRow({ c }: { c: Category }) {
   const { update, remove } = useCategoryMutations();
@@ -86,6 +87,7 @@ export default function Settings() {
   const { data: system } = useSystem();
   const { data: cats = [] } = useCategories();
   const save = useSaveSettings();
+  const server = useServerMode();
   const { create } = useCategoryMutations();
   const [draft, setDraft] = useState<S | null>(null);
   const [newCat, setNewCat] = useState("");
@@ -188,6 +190,9 @@ export default function Settings() {
 
         <section className="card grid grid-cols-2 gap-4 p-4 md:grid-cols-4">
           <h2 className="col-span-full font-medium">Import and stats</h2>
+          <Field label="Process uploads automatically" hint="landmarks, pose and alignment for newly uploaded photos">
+            <Toggle checked={draft.auto_process_uploads ?? server} onChange={(v) => set("auto_process_uploads", v)} />
+          </Field>
           <Field label="Skip near-duplicates">
             <Toggle checked={draft.skip_near_duplicates} onChange={(v) => set("skip_near_duplicates", v)} />
           </Field>
