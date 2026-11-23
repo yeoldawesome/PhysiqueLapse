@@ -54,6 +54,32 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  # Public address (optional): PhysiqueLapse's OWN Cloudflare Tunnel, separate from anything else
+  # on this machine. Started only with:  docker compose --profile public up -d
+  # See docs/public-setup.md. It reaches the app over this project's private network; nothing
+  # is published on the host for it.
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.7
+    container_name: physiquelapse-tunnel
+    profiles: ["public"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      physiquelapse:
+        condition: service_healthy
+    cpus: 0.5
+    mem_limit: 256m
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [pl]
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }
+
 networks:
   pl:
     name: physiquelapse

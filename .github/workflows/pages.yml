@@ -1,0 +1,43 @@
+# Publishes site/ (a static landing page, no app code or data) to GitHub Pages.
+# Set the app's public address as a repository variable APP_URL (Settings → Secrets and
+# variables → Actions → Variables), e.g. https://app.example.com, and enable Pages with
+# Source = GitHub Actions (Settings → Pages).
+name: Landing page
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fill in the app address
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          mkdir -p _site
+          cp -r site/. _site/
+          cp frontend/public/icons/icon-192.png _site/
+          if [ -n "$APP_URL" ]; then sed -i "s|__APP_URL__|$APP_URL|g" _site/index.html; fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
