@@ -9,6 +9,7 @@ is cancelled or dies with the process can simply be run again and continues.
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import threading
 import time
@@ -101,22 +102,27 @@ class JobContext:
 class JobRunner:
     def __init__(self) -> None:
         self._queues: dict[str, queue.Queue[int]] = {lane: queue.Queue() for lane in LANES}
-        self._threads: list[threading.Thread] = []
+        self._threads: list[tuple[str, threading.Thread]] = []
         self._stop = threading.Event()
         self._cancel_requests: set[int] = set()
         self._lock = threading.Lock()
 
     # ---- lifecycle -----------------------------------------------------------
     def start(self) -> None:
+        from . import config
+
         self._recover()
         for lane in LANES:
-            t = threading.Thread(target=self._worker, args=(lane,), name=f"jobs-{lane}", daemon=True)
-            t.start()
-            self._threads.append(t)
+            n = config.CV_WORKERS if lane == "cv" else 1
+            for i in range(n):
+                name = f"jobs-{lane}" if n == 1 else f"jobs-{lane}-{i + 1}"
+                t = threading.Thread(target=self._worker, args=(lane,), name=name, daemon=True)
+                t.start()
+                self._threads.append((lane, t))
 
     def stop(self) -> None:
         self._stop.set()
-        for lane in LANES:
+        for lane, _t in self._threads:
             self._queues[lane].put(-1)
 
     def _recover(self) -> None:
@@ -186,6 +192,7 @@ class JobRunner:
 
     # ---- worker --------------------------------------------------------------
     def _worker(self, lane: str) -> None:
+        _lower_priority()
         q = self._queues[lane]
         while not self._stop.is_set():
             job_id = q.get()
@@ -243,6 +250,21 @@ class JobRunner:
                 s.add(row)
                 s.commit()
         log.info("job %s %s -> %s in %.1fs", job_id, type_, status, time.monotonic() - t0)
+
+
+def _lower_priority() -> None:
+    """Server mode: job threads run at a lower CPU priority so heavy work never starves the
+    web requests or other apps on the machine. On Linux a thread is its own scheduling task,
+    so this affects only the calling worker thread (and processes it starts)."""
+    from . import config
+
+    if config.JOB_NICE <= 0 or not hasattr(os, "setpriority"):
+        return
+    try:
+        tid = threading.get_native_id()
+        os.setpriority(os.PRIO_PROCESS, tid, min(19, os.getpriority(os.PRIO_PROCESS, tid) + config.JOB_NICE))
+    except OSError as e:
+        log.warning("could not lower job priority: %s", e)
 
 
 _runner: JobRunner | None = None

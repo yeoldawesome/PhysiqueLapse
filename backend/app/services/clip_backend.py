@@ -60,7 +60,7 @@ class OpenClipScorer:
         import open_clip
         import torch
 
-        torch.set_num_threads(max(1, (os.cpu_count() or 4) - 2))
+        torch.set_num_threads(config.cpu_threads(reserve=2))
         weights = local_weights()
         if weights is None:
             raise RuntimeError(

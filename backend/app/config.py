@@ -40,8 +40,61 @@ TRASH_DIR = DATA_DIR / "trash"
 INCOMING_DIR = DATA_DIR / "incoming"
 DB_PATH = DATA_DIR / "physiquelapse.db"
 
-HOST = os.environ.get("HOST", "127.0.0.1")
-PORT = int(os.environ.get("PORT", "8000"))
+# ---------------------------------------------------------------------------- mode
+# desktop (default): the local app as it has always been - 127.0.0.1, no login.
+# server: the same app on a home server, used from phones and laptops in a browser; login
+# required on every /api route. Everything server-only reads these values, never a second
+# copy of the code.
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    v = os.environ.get(name)
+    if v is None or v.strip() == "":
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name) or default)
+    except ValueError:
+        return default
+
+
+MODE = (os.environ.get("PL_MODE") or "desktop").strip().lower()
+if MODE not in ("desktop", "server"):
+    MODE = "desktop"
+SERVER = MODE == "server"
+
+HOST = os.environ.get("PL_HOST") or os.environ.get("HOST") or ("0.0.0.0" if SERVER else "127.0.0.1")
+PORT = int(os.environ.get("PORT", "8420" if SERVER else "8000"))
+
+COOKIE_SECURE = _env_bool("PL_COOKIE_SECURE", True)  # tailscale serve gives us HTTPS
+SESSION_DAYS = _env_int("PL_SESSION_DAYS", 30)
+# extra origins allowed to send state-changing requests (besides the request's own host)
+ALLOWED_ORIGINS = [o.strip().rstrip("/") for o in (os.environ.get("PL_ALLOWED_ORIGINS") or "").split(",") if o.strip()]
+TRUSTED_PROXIES = os.environ.get("PL_TRUSTED_PROXIES") or "*"
+# job runner: model-work threads and their priority (server mode shares the CPU with other apps)
+CV_WORKERS = max(1, _env_int("PL_CV_WORKERS", 1))
+JOB_NICE = _env_int("PL_JOB_NICE", 10 if SERVER else 0)
+# cap for torch / OpenCV threads; os.cpu_count() sees every host CPU inside a container
+THREADS = _env_int("PL_THREADS", 0)  # 0 = automatic (as before)
+
+
+def cpu_threads(reserve: int = 2) -> int:
+    """Threads a model library may use."""
+    if THREADS > 0:
+        return THREADS
+    try:
+        n = len(os.sched_getaffinity(0))  # type: ignore[attr-defined]
+    except AttributeError:
+        n = os.cpu_count() or 4
+    return max(1, n - reserve)
+
+
+def auth_required() -> bool:
+    """Read at request time (tests switch modes)."""
+    return SERVER
 
 THUMB_LONG_SIDE = 400
 PREVIEW_LONG_SIDE = 1280

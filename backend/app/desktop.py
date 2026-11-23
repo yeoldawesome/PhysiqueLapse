@@ -110,6 +110,7 @@ def main() -> None:
     multiprocessing.freeze_support()
     os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ["PL_MODE"] = "desktop"  # the window app is always local: no login, 127.0.0.1 only
 
     from . import config
 
