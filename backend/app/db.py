@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any
 
 from sqlalchemy import event, text
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -16,50 +18,71 @@ log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 12
 
-_engine = None
+# one engine per library database (see tenancy.py); a library's schema is created / migrated
+# the first time it is used in this process
+_engines: dict[str, Any] = {}
+_ready: set[str] = set()
+_engines_lock = threading.RLock()
+
+
+def _make_engine(db_path):
+    e = create_engine(
+        f"sqlite:///{db_path.as_posix()}",
+        connect_args={"check_same_thread": False, "timeout": 30},
+        pool_pre_ping=True,
+    )
+
+    @event.listens_for(e, "connect")
+    def _pragmas(dbapi_conn, _record):  # noqa: ANN001
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.execute("PRAGMA busy_timeout=30000")
+        cur.close()
+
+    return e
 
 
 def engine():
-    global _engine
-    if _engine is None:
-        config.ensure_dirs()
-        _engine = create_engine(
-            f"sqlite:///{config.DB_PATH.as_posix()}",
-            connect_args={"check_same_thread": False, "timeout": 30},
-            pool_pre_ping=True,
-        )
+    """The current library's database engine."""
+    db_path = config.DB_PATH
+    key = str(db_path)
+    e = _engines.get(key)
+    if e is not None and key in _ready:
+        return e
+    with _engines_lock:
+        e = _engines.get(key)
+        if e is None:
+            config.ensure_dirs()
+            e = _engines[key] = _make_engine(db_path)
+        if key not in _ready:
+            _ready.add(key)  # before init: init_db() calls engine() again
+            try:
+                init_db()
+            except Exception:
+                _ready.discard(key)
+                raise
+    return e
 
-        @event.listens_for(_engine, "connect")
-        def _pragmas(dbapi_conn, _record):  # noqa: ANN001
-            cur = dbapi_conn.cursor()
-            cur.execute("PRAGMA journal_mode=WAL")
-            cur.execute("PRAGMA synchronous=NORMAL")
-            cur.execute("PRAGMA foreign_keys=ON")
-            cur.execute("PRAGMA busy_timeout=30000")
-            cur.close()
 
-    return _engine
+def dispose_engines() -> None:
+    with _engines_lock:
+        for e in _engines.values():
+            e.dispose()
+        _engines.clear()
+        _ready.clear()
 
 
 def reset_engine_for_tests(path) -> None:
-    """Point the app at a fresh database file (tests only)."""
-    global _engine
+    """Point the app at a fresh data folder whose single library is the folder itself (tests only)."""
+    from .tenancy import Library, set_default
+
     config.DATA_DIR = path
-    config.DB_PATH = path / "physiquelapse.db"
-    config.ORIGINALS_DIR = path / "originals"
-    config.DERIVED_DIR = path / "derived"
-    config.THUMBS_DIR = config.DERIVED_DIR / "thumbs"
-    config.PREVIEWS_DIR = config.DERIVED_DIR / "previews"
-    config.LANDMARKS_DIR = config.DERIVED_DIR / "landmarks"
-    config.ALIGNED_DIR = config.DERIVED_DIR / "aligned"
-    config.EXPORTS_DIR = config.DERIVED_DIR / "exports"
     config.MODELS_DIR = path / "models"
     config.CLIP_CACHE_DIR = config.MODELS_DIR / "open_clip"
-    config.TRASH_DIR = path / "trash"
-    config.INCOMING_DIR = path / "incoming"
-    if _engine is not None:
-        _engine.dispose()
-    _engine = None
+    set_default(Library(0, path))
+    dispose_engines()
 
 
 @contextmanager

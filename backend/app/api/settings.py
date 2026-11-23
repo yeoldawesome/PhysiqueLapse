@@ -99,10 +99,10 @@ def system_info(s: Session = Depends(get_session)) -> dict[str, Any]:
         except Exception:
             ffmpeg = None
     return {
-        "data_dir": str(config.DATA_DIR),
+        "data_dir": str(config.library_root()),
         "db_path": str(config.DB_PATH),
         "disk_free_gb": round(usage.free / 1e9, 1),
-        "data_size_mb": round(_dir_size(config.DATA_DIR) / 1e6, 1),
+        "data_size_mb": round(_dir_size(config.library_root()) / 1e6, 1),
         "photos": s.exec(select(func.count(Photo.id))).one(),
         "models": models,
         "active_pose_model": settings.pose_model,

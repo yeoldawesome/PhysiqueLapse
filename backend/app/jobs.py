@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import logging
 import os
-import queue
 import threading
 import time
 import traceback
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -21,8 +21,10 @@ from typing import Any
 
 from sqlmodel import Session, select
 
+from . import tenancy
 from .db import engine
 from .models import Job, now
+from .tenancy import Library
 
 log = logging.getLogger(__name__)
 
@@ -53,10 +55,50 @@ def job(type_: str, lane: str = "io", title: str | None = None):
     return deco
 
 
+class FairQueue:
+    """Job queue shared by every library: blocking get() hands out jobs round-robin across
+    libraries (FIFO within one), so one account's big import never starves another's."""
+
+    def __init__(self) -> None:
+        self._cv = threading.Condition()
+        self._by_lib: dict[int, deque] = {}
+        self._order: deque[int] = deque()  # libraries with waiting jobs, next in line first
+        self._stops = 0
+
+    def put(self, lib: Library, job_id: int) -> None:
+        with self._cv:
+            q = self._by_lib.setdefault(lib.id, deque())
+            if not q:
+                self._order.append(lib.id)
+            q.append((lib, job_id))
+            self._cv.notify()
+
+    def put_stop(self) -> None:
+        with self._cv:
+            self._stops += 1
+            self._cv.notify()
+
+    def get(self) -> tuple[Library, int] | None:
+        """Next job, or None when told to stop."""
+        with self._cv:
+            while not self._order and not self._stops:
+                self._cv.wait()
+            if self._stops:
+                self._stops -= 1
+                return None
+            lib_id = self._order.popleft()
+            q = self._by_lib[lib_id]
+            item = q.popleft()
+            if q:
+                self._order.append(lib_id)  # back of the line
+            return item
+
+
 class JobContext:
-    def __init__(self, runner: JobRunner, job_id: int):
+    def __init__(self, runner: JobRunner, job_id: int, lib: Library | None = None):
         self.runner = runner
         self.job_id = job_id
+        self.lib = lib or tenancy.current()
         self._last_write = 0.0
         self._done = 0
         self._total = 0
@@ -88,7 +130,7 @@ class JobContext:
     # ---- cancellation --------------------------------------------------------
     @property
     def cancelled(self) -> bool:
-        return self.job_id in self.runner._cancel_requests
+        return (self.lib.id, self.job_id) in self.runner._cancel_requests
 
     def check_cancelled(self) -> None:
         if self.cancelled:
@@ -101,10 +143,10 @@ class JobContext:
 
 class JobRunner:
     def __init__(self) -> None:
-        self._queues: dict[str, queue.Queue[int]] = {lane: queue.Queue() for lane in LANES}
+        self._queues: dict[str, FairQueue] = {lane: FairQueue() for lane in LANES}
         self._threads: list[tuple[str, threading.Thread]] = []
         self._stop = threading.Event()
-        self._cancel_requests: set[int] = set()
+        self._cancel_requests: set[tuple[int, int]] = set()  # (library id, job id)
         self._lock = threading.Lock()
 
     # ---- lifecycle -----------------------------------------------------------
@@ -123,11 +165,16 @@ class JobRunner:
     def stop(self) -> None:
         self._stop.set()
         for lane, _t in self._threads:
-            self._queues[lane].put(-1)
+            self._queues[lane].put_stop()
 
     def _recover(self) -> None:
-        """Jobs left queued/running by a previous process are marked failed; they are
-        idempotent, so the user just runs them again."""
+        """Jobs left queued/running by a previous process are marked failed in every library;
+        they are idempotent, so the user just runs them again."""
+        for lib in tenancy.all_libraries():
+            with tenancy.use_library(lib):
+                self._recover_library()
+
+    def _recover_library(self) -> None:
         with Session(engine()) as s:
             rows = s.exec(select(Job).where(Job.status.in_(["queued", "running"]))).all()
             from .models import ImportSession
@@ -160,7 +207,7 @@ class JobRunner:
             s.add(row)
             s.commit()
             s.refresh(row)
-        self._queues[h.lane].put(row.id)
+        self._queues[h.lane].put(tenancy.current(), row.id)
         return row
 
     def cancel(self, job_id: int) -> Job | None:
@@ -178,7 +225,7 @@ class JobRunner:
                 return row
             if row.status == "running":
                 with self._lock:
-                    self._cancel_requests.add(job_id)
+                    self._cancel_requests.add((tenancy.current().id, job_id))
                 row.message = "Cancelling..."
                 s.add(row)
                 s.commit()
@@ -195,13 +242,15 @@ class JobRunner:
         _lower_priority()
         q = self._queues[lane]
         while not self._stop.is_set():
-            job_id = q.get()
-            if job_id < 0:
+            item = q.get()
+            if item is None:
                 break
+            lib, job_id = item
             try:
-                self._run(job_id)
+                with tenancy.use_library(lib):
+                    self._run(job_id)
             except Exception:  # pragma: no cover - last-resort guard
-                log.exception("job %s crashed outside handler", job_id)
+                log.exception("job %s (library %s) crashed outside handler", job_id, lib.id)
 
     def _run(self, job_id: int) -> None:
         with Session(engine()) as s:
@@ -216,7 +265,7 @@ class JobRunner:
             type_ = row.type
             params = dict(row.params or {})
         h = _REGISTRY.get(type_)
-        ctx = JobContext(self, job_id)
+        ctx = JobContext(self, job_id, tenancy.current())
         status, result, error = "done", {}, None
         t0 = time.monotonic()
         try:
@@ -231,7 +280,7 @@ class JobRunner:
             log.error("job %s (%s) failed:\n%s", job_id, type_, traceback.format_exc())
         finally:
             with self._lock:
-                self._cancel_requests.discard(job_id)
+                self._cancel_requests.discard((ctx.lib.id, job_id))
         with Session(engine()) as s:
             row = s.get(Job, job_id)
             if row is not None:

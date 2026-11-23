@@ -1,8 +1,14 @@
 """Paths and process-wide constants.
 
 Everything the app writes lives under DATA_DIR (default: <project>/data). Set the
-DATA_DIR environment variable to relocate it. Paths stored in the database are
-relative to DATA_DIR so the folder can be moved or backed up by copying it.
+DATA_DIR environment variable to relocate it.
+
+Photos, derived images and the database belong to a *library* (see tenancy.py): the desktop
+app's library is DATA_DIR itself; on the server each account has its own under
+DATA_DIR/libraries/<id>/. The library paths below (ORIGINALS_DIR, THUMBS_DIR, DB_PATH, ...) are
+therefore looked up on every use, for the library of the current request or job. Paths stored
+in a database are relative to its library folder, so a library can be moved or backed up by
+copying it. Models are shared by everyone (MODELS_DIR).
 """
 
 from __future__ import annotations
@@ -26,19 +32,36 @@ else:
     _default_data = PROJECT_ROOT / "data"
 
 DATA_DIR = Path(os.environ.get("DATA_DIR") or _default_data).resolve()
-ORIGINALS_DIR = DATA_DIR / "originals"
-DERIVED_DIR = DATA_DIR / "derived"
-EXAMPLES_DIR = DATA_DIR / "examples"  # uploaded pose examples (not library photos)
-THUMBS_DIR = DERIVED_DIR / "thumbs"
-PREVIEWS_DIR = DERIVED_DIR / "previews"
-LANDMARKS_DIR = DERIVED_DIR / "landmarks"
-ALIGNED_DIR = DERIVED_DIR / "aligned"
-EXPORTS_DIR = DERIVED_DIR / "exports"
-MODELS_DIR = DATA_DIR / "models"
+MODELS_DIR = DATA_DIR / "models"  # shared by every library
 CLIP_CACHE_DIR = MODELS_DIR / "open_clip"
-TRASH_DIR = DATA_DIR / "trash"
-INCOMING_DIR = DATA_DIR / "incoming"
-DB_PATH = DATA_DIR / "physiquelapse.db"
+
+# library paths, relative to the current library's folder (see the module docstring)
+_LIBRARY_PATHS = {
+    "ORIGINALS_DIR": "originals",
+    "DERIVED_DIR": "derived",
+    "EXAMPLES_DIR": "examples",  # uploaded pose examples (not library photos)
+    "THUMBS_DIR": "derived/thumbs",
+    "PREVIEWS_DIR": "derived/previews",
+    "LANDMARKS_DIR": "derived/landmarks",
+    "ALIGNED_DIR": "derived/aligned",
+    "EXPORTS_DIR": "derived/exports",
+    "TRASH_DIR": "trash",
+    "INCOMING_DIR": "incoming",
+    "DB_PATH": "physiquelapse.db",
+}
+
+
+def library_root() -> Path:
+    from .tenancy import current
+
+    return current().root
+
+
+def __getattr__(name: str) -> Path:
+    sub = _LIBRARY_PATHS.get(name)
+    if sub is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return library_root() / sub
 
 # ---------------------------------------------------------------------------- mode
 # desktop (default): the local app as it has always been - 127.0.0.1, no login.
@@ -149,27 +172,33 @@ def face_model_path(kind: str) -> Path:
 
 
 def ensure_dirs() -> None:
-    for d in (
-        DATA_DIR,
-        ORIGINALS_DIR,
-        THUMBS_DIR,
-        PREVIEWS_DIR,
-        LANDMARKS_DIR,
-        ALIGNED_DIR,
-        EXPORTS_DIR,
-        MODELS_DIR,
-        TRASH_DIR,
-        INCOMING_DIR,
-        EXAMPLES_DIR,
-    ):
-        d.mkdir(parents=True, exist_ok=True)
+    """Shared folders, plus the current library's folders when a library is chosen."""
+    from .tenancy import current_or_none
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    lib = current_or_none()
+    if lib is not None:
+        for sub in _LIBRARY_PATHS.values():
+            if sub != "physiquelapse.db":
+                (lib.root / sub).mkdir(parents=True, exist_ok=True)
 
 
 def rel(path: Path) -> str:
-    """Path relative to DATA_DIR, with forward slashes, for storage in the DB."""
-    return Path(path).resolve().relative_to(DATA_DIR).as_posix()
+    """Path relative to the library folder, with forward slashes, for storage in the DB."""
+    return Path(path).resolve().relative_to(library_root().resolve()).as_posix()
 
 
 def abs_path(stored: str) -> Path:
     """Inverse of rel()."""
-    return DATA_DIR / stored
+    return library_root() / stored
+
+
+# the desktop app (and the server until accounts exist) has one library: DATA_DIR itself
+def _set_default_library() -> None:
+    from .tenancy import Library, set_default
+
+    set_default(Library(0, DATA_DIR))
+
+
+_set_default_library()
