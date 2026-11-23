@@ -83,6 +83,7 @@ Full steps, with checks that other apps on the server keep working, plus updatin
 
 - MediaPipe is pinned to **0.10.21**. Every newer release embeds a usage-metrics uploader to Google with no opt-out (see `PLAN.md` §0).
 - CLIP runs with `HF_HUB_OFFLINE=1` after the one-time download.
+- The Capture page's live pose matching runs MediaPipe in your browser from files this app serves (`/mediapipe/`, the lite model behind the login); the browser fetches nothing from Google.
 - The app makes no network calls at runtime besides the one-time model download (desktop and server).
 - Network exposure is opt-in: only server mode (`PL_MODE=server`) listens beyond this computer, and only behind a login. The Docker setup publishes it on the server's loopback for `tailscale serve`, so it's reachable only from your tailnet. In server mode, a Content-Security-Policy (`connect-src 'self'`) also stops the web page from contacting anything but your server.
 

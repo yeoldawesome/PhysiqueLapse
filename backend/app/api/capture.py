@@ -158,6 +158,15 @@ def align_series(sid: int, force: bool = False, s: Session = Depends(get_session
     return job_to_dict(runner().enqueue("align_series", {"series_id": sid, "force": force}))
 
 
+@router.get("/pose-model")
+def live_pose_model():
+    """The lite pose model for live matching on the Capture page (behind the login like the rest)."""
+    path = config.pose_model_path("lite")
+    if not path.exists():
+        raise HTTPException(404, "live pose model not downloaded yet (Settings: download models)")
+    return FileResponse(path, media_type="application/octet-stream", headers={"Cache-Control": "private, max-age=604800"})
+
+
 @router.get("/ghost/{photo_id}/edges")
 def ghost_edges(photo_id: int, s: Session = Depends(get_session)):
     p = s.get(Photo, photo_id)

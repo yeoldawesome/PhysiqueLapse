@@ -25,6 +25,7 @@ from .jobs import runner
 log = logging.getLogger("physiquelapse")
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 mimetypes.add_type("text/javascript", ".js")  # Windows registries sometimes map .js to text/plain
+mimetypes.add_type("application/wasm", ".wasm")  # streaming WebAssembly compile needs this type
 
 
 def _register_job_handlers() -> None:

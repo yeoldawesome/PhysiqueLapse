@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, FlipHorizontal2, Image as ImageIcon, RefreshCcw, RotateCcw, SwitchCamera, Timer } from "lucide-react";
+import { ArrowLeft, Check, Crosshair, FlipHorizontal2, Image as ImageIcon, RefreshCcw, RotateCcw, SwitchCamera, Timer, Zap } from "lucide-react";
 import { useGhost, usePatchSeries, type CaptureSeries, type GhostSource, type GhostStyle } from "../../api/capture";
 import { addToOutbox, markSaved, useOutbox } from "../../lib/outbox";
 import { toast } from "../../lib/toast";
 import { captureFilename, cropToAspect, drawSkeleton, getSaveToRoll, isoWithOffset, openCamera, saveToCameraRoll, stopStream, takeStill } from "./camera";
+import { detect, ghostInVideo, jointColor, loadLivePose, matchPose } from "./livePose";
+
+const AUTO_SCORE = 85; // auto-capture when the match stays at or above this...
+const AUTO_HOLD_MS = 1000; // ...for this long
+
+function readMatchPref(): boolean {
+  try {
+    return localStorage.getItem("pl.capture.match") === "1";
+  } catch {
+    return false;
+  }
+}
 
 const STYLES: { key: GhostStyle; label: string }[] = [
   { key: "photo", label: "Photo" },
@@ -55,6 +67,13 @@ export default function CameraScreen({ series, onExit, extra }: { series: Captur
   const [count, setCount] = useState<number | null>(null);
   const [shot, setShot] = useState<Shot | null>(null);
   const [compare, setCompare] = useState(false);
+  // live pose matching (in the browser)
+  const liveRef = useRef<HTMLCanvasElement>(null);
+  const [matching, setMatching] = useState(readMatchPref);
+  const [score, setScore] = useState<number | null>(null);
+  const [matchState, setMatchState] = useState<"off" | "loading" | "on" | "error">("off");
+  const busyRef = useRef(false); // countdown or review open: no auto-capture
+  const shutterRef = useRef<() => void>(() => {});
   const outbox = useOutbox();
   // a capture reached the server: refresh the streak, last photo and the "last" ghost
   useEffect(() => {
@@ -126,6 +145,77 @@ export default function CameraScreen({ series, onExit, extra }: { series: Captur
   }, [ghost, ghostImg, vsize, opts.ghost_style]);
   useEffect(draw, [draw]);
 
+  useEffect(() => {
+    busyRef.current = count != null || shot != null;
+  }, [count, shot]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("pl.capture.match", matching ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [matching]);
+
+  // live matching loop: ~10 detections a second on the preview
+  useEffect(() => {
+    const c = liveRef.current;
+    if (!matching || !vsize || !ghost?.landmarks || !c) {
+      setScore(null);
+      setMatchState(matching ? (ghost && !ghost.landmarks ? "error" : "off") : "off");
+      c?.getContext("2d")?.clearRect(0, 0, c.width, c.height);
+      return;
+    }
+    let stop = false;
+    let timer = 0;
+    let goodSince: number | null = null;
+    let smooth: number | null = null; // the score jitters frame to frame: average over ~0.5 s
+    const gw = ghost.width, gh = ghost.height;
+    const target = ghostInVideo(ghost.landmarks, gw, gh, vsize.w, vsize.h);
+    setMatchState("loading");
+    loadLivePose()
+      .then((lm) => {
+        if (stop) return;
+        setMatchState("on");
+        const scale = Math.min(1, 1280 / Math.max(vsize.w, vsize.h));
+        c.width = Math.round(vsize.w * scale);
+        c.height = Math.round(vsize.h * scale);
+        const ctx = c.getContext("2d")!;
+        const tick = () => {
+          if (stop) return;
+          const v = videoRef.current;
+          try {
+          if (v && v.readyState >= 2) {
+            const live = detect(lm, v);
+            ctx.clearRect(0, 0, c.width, c.height);
+            const m = live ? matchPose(live, target, vsize.w, vsize.h) : null;
+            smooth = m ? (smooth == null ? m.score : smooth * 0.7 + m.score * 0.3) : null;
+            const sc = smooth == null ? null : Math.round(smooth);
+            setScore(sc);
+            if (live) drawSkeleton(ctx, live, (p) => [p.x * c.width, p.y * c.height], c.width / 1080, (n) => jointColor(m?.joints.get(n)));
+            const now = performance.now();
+            if (sc != null && sc >= AUTO_SCORE && !busyRef.current) {
+              goodSince ??= now;
+              if (opts.auto_capture && now - goodSince >= AUTO_HOLD_MS) {
+                goodSince = null;
+                shutterRef.current();
+              }
+            } else goodSince = null;
+          }
+          } catch (e) {
+            console.warn("live pose frame failed:", e);
+          } finally {
+            if (!stop) timer = window.setTimeout(tick, 100); // one bad frame never stops matching
+          }
+        };
+        tick();
+      })
+      .catch(() => !stop && setMatchState("error"));
+    return () => {
+      stop = true;
+      window.clearTimeout(timer);
+    };
+  }, [matching, vsize, ghost, opts.auto_capture]);
+
   const portraitGhost = ghost ? ghost.height >= ghost.width : true;
   const portraitVideo = vsize ? vsize.h >= vsize.w : true;
 
@@ -157,6 +247,8 @@ export default function CameraScreen({ series, onExit, extra }: { series: Captur
       } else setCount(n);
     }, 1000);
   };
+
+  shutterRef.current = shutter;
 
   const retake = () => {
     if (shot) URL.revokeObjectURL(shot.url);
@@ -233,6 +325,21 @@ export default function CameraScreen({ series, onExit, extra }: { series: Captur
             Turn the phone {portraitGhost ? "upright" : "sideways"} to match the ghost.
           </div>
         )}
+        <canvas ref={liveRef} className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${mirror}`} />
+        {matching && (
+          <div className="absolute inset-x-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] mx-auto w-fit rounded-full bg-black/60 px-3 py-1 text-sm tabular-nums">
+            {matchState === "loading" && "Loading live pose…"}
+            {matchState === "error" && (ghost && !ghost.landmarks ? "The ghost has no landmarks to match" : "Live pose unavailable")}
+            {matchState === "on" &&
+              (score == null ? (
+                "Step into the frame"
+              ) : (
+                <span className={score >= AUTO_SCORE ? "text-ok" : score >= 60 ? "text-warn" : "text-danger"}>
+                  Match {score}%{opts.auto_capture && score >= AUTO_SCORE ? " · hold still" : ""}
+                </span>
+              ))}
+          </div>
+        )}
         {count != null && (
           <div className="absolute inset-0 flex items-center justify-center text-[120px] font-bold drop-shadow-lg">{count}</div>
         )}
@@ -304,6 +411,23 @@ export default function CameraScreen({ series, onExit, extra }: { series: Captur
               {s.label}
             </button>
           ))}
+        </div>
+        <div className="flex gap-1 text-xs">
+          <button
+            className={`flex flex-1 items-center justify-center gap-1 rounded-md py-1.5 ${matching ? "bg-white text-black" : "bg-white/10"}`}
+            onClick={() => setMatching((v) => !v)}
+            title="compare your joints with the ghost's, live"
+          >
+            <Crosshair size={14} /> Match pose
+          </button>
+          <button
+            className={`flex flex-1 items-center justify-center gap-1 rounded-md py-1.5 disabled:opacity-40 ${opts.auto_capture ? "bg-white text-black" : "bg-white/10"}`}
+            onClick={() => set({ auto_capture: !opts.auto_capture })}
+            disabled={!matching}
+            title={`take the photo when the match stays at ${AUTO_SCORE}% for a second`}
+          >
+            <Zap size={14} /> Auto-capture
+          </button>
         </div>
         {extra}
         <div className="flex items-center justify-between pt-1">
