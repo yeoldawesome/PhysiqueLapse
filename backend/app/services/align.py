@@ -23,7 +23,7 @@ from sqlmodel import Session, select
 
 from .. import config
 from ..jobs import JobContext, job
-from ..models import Alignment, Photo, PoseCategory, now
+from ..models import Alignment, CaptureSeries, Photo, PoseCategory, SeriesAlignment, now
 from ..settings import AppSettings, load_settings
 from . import features as F
 from . import images
@@ -370,10 +370,14 @@ def _remove_bg(rgb: np.ndarray) -> np.ndarray:
     return (rgba[..., :3].astype(np.float32) * alpha + bg * (1 - alpha)).astype(np.uint8)
 
 
-def write_output(photo_id: int, canvas: np.ndarray) -> str:
+def series_output_path(series_id: int, photo_id: int):
+    return config.DERIVED_DIR / "series" / str(series_id) / f"{photo_id}.jpg"
+
+
+def write_output(photo_id: int, canvas: np.ndarray, series_id: int | None = None) -> str:
     from PIL import Image
 
-    path = config.ALIGNED_DIR / f"{photo_id}.jpg"
+    path = config.ALIGNED_DIR / f"{photo_id}.jpg" if series_id is None else series_output_path(series_id, photo_id)
     images.save_jpeg(Image.fromarray(canvas), path, quality=92)
     return config.rel(path)
 
@@ -383,7 +387,9 @@ def write_output(photo_id: int, canvas: np.ndarray) -> str:
 
 @dataclass
 class CategoryContext:
-    cat: PoseCategory
+    # what the photos are aligned for: a PoseCategory, or a daily CaptureSeries (same alignment
+    # fields: anchor_mode, scale_basis, rotation_basis, align_method, framing_*, reference_photo_id)
+    cat: PoseCategory | CaptureSeries
     reference: Photo
     target: Target
     settings: AppSettings
@@ -407,14 +413,24 @@ def _fit_cost(src: dict[str, dict], ref: dict[str, dict], clamp_deg: float, weig
     return float(np.sqrt((w * resid**2).sum() / w.sum()) / T)
 
 
-def pick_default_reference(s: Session, cat: PoseCategory, clamp_deg: float = 8.0) -> Photo | None:
+def _member_filter(spec: PoseCategory | CaptureSeries):
+    if isinstance(spec, CaptureSeries):
+        return Photo.capture_series_id == spec.id
+    return Photo.pose_category_id == spec.id
+
+
+def is_series(cc: CategoryContext) -> bool:
+    return isinstance(cc.cat, CaptureSeries)
+
+
+def pick_default_reference(s: Session, cat: PoseCategory | CaptureSeries, clamp_deg: float = 8.0) -> Photo | None:
     """The photo every other photo of the category aligns to best: for each candidate,
     fit all others onto it (body fit, rotation clamp) and sum the leftover error.
     The earliest photo is often an outlier (other framing, lean or distance), which
     would drag every other frame off. Ties go to the earliest photo."""
     rows = s.exec(
         select(Photo)
-        .where(Photo.pose_category_id == cat.id, Photo.landmarks_status == "ok", Photo.excluded == False)  # noqa: E712
+        .where(_member_filter(cat), Photo.landmarks_status == "ok", Photo.excluded == False)  # noqa: E712
         .order_by(Photo.taken_at.is_(None), Photo.taken_at.asc(), Photo.id.asc())
     ).all()
     good = [p for p in rows if (p.landmarks_quality or 0) >= 0.6] or list(rows)
@@ -440,7 +456,7 @@ def pick_default_reference(s: Session, cat: PoseCategory, clamp_deg: float = 8.0
     return best
 
 
-def category_context(s: Session, cat: PoseCategory, settings: AppSettings, *, auto_pick: bool = True) -> CategoryContext:
+def category_context(s: Session, cat: PoseCategory | CaptureSeries, settings: AppSettings, *, auto_pick: bool = True) -> CategoryContext:
     ref = s.get(Photo, cat.reference_photo_id) if cat.reference_photo_id else None
     if ref is None and auto_pick:
         ref = pick_default_reference(s, cat, settings.rotation_clamp_deg)
@@ -461,7 +477,8 @@ def category_context(s: Session, cat: PoseCategory, settings: AppSettings, *, au
 
 def maybe_normalize_facing(s: Session, photo: Photo, cc: CategoryContext) -> bool:
     """Auto-flip a photo whose facing is opposite to the reference. Manual flips are respected."""
-    if not cc.cat.normalize_facing or photo.flip_source == "manual" or photo.id == cc.reference.id:
+    # never for a series: a flip is stored on the photo and would change its pose alignment too
+    if is_series(cc) or not cc.cat.normalize_facing or photo.flip_source == "manual" or photo.id == cc.reference.id:
         return False
     if abs(cc.ref_facing) < 0.3:
         return False
@@ -478,9 +495,19 @@ def maybe_normalize_facing(s: Session, photo: Photo, cc: CategoryContext) -> boo
     return False
 
 
-def align_photo(s: Session, photo: Photo, cc: CategoryContext, *, keep_manual: bool = True) -> Alignment:
+def alignment_row(s: Session, photo_id: int, cc: CategoryContext) -> Alignment | SeriesAlignment | None:
+    if is_series(cc):
+        return s.get(SeriesAlignment, (cc.cat.id, photo_id))
+    return s.get(Alignment, photo_id)
+
+
+def align_photo(s: Session, photo: Photo, cc: CategoryContext, *, keep_manual: bool = True) -> Alignment | SeriesAlignment:
+    """Align one photo onto the reference of its pose (row in `alignments`, file in
+    derived/aligned) or of a daily series (row in `series_alignments`, file in derived/series/<id>)."""
     W, H = cc.settings.canvas_w, cc.settings.canvas_h
-    a = s.get(Alignment, photo.id) or Alignment(photo_id=photo.id)
+    a = alignment_row(s, photo.id, cc) or (
+        SeriesAlignment(series_id=cc.cat.id, photo_id=photo.id) if is_series(cc) else Alignment(photo_id=photo.id)
+    )
     flags: dict[str, Any] = {}
     basis_used = "fit"
     if keep_manual and a.method == "manual" and a.canvas_w == W and a.canvas_h == H:
@@ -510,9 +537,10 @@ def align_photo(s: Session, photo: Photo, cc: CategoryContext, *, keep_manual: b
         resid = residuals(L.points_dict(data), tr, cc.target, cc.cat.anchor_mode)["mean"]
         jres = 0.0 if photo.id == cc.reference.id else joint_match(L.points_dict(data), tr, cc.target)
     canvas = render(photo, tr, W, H, bg_removal=cc.settings.bg_removal)
-    a.output_path = write_output(photo.id, canvas)
+    a.output_path = write_output(photo.id, canvas, cc.cat.id if is_series(cc) else None)
     a.reference_photo_id = cc.reference.id
-    a.pose_category_id = cc.cat.id
+    if not is_series(cc):
+        a.pose_category_id = cc.cat.id
     a.canvas_w, a.canvas_h = W, H
     a.scale, a.rotation_deg, a.tx, a.ty = tr.scale, tr.rotation_deg, tr.tx, tr.ty
     a.method = method
@@ -526,10 +554,12 @@ def align_photo(s: Session, photo: Photo, cc: CategoryContext, *, keep_manual: b
     return a
 
 
-def needs_work(a: Alignment | None, photo: Photo, cc: CategoryContext) -> bool:
+def needs_work(a: Alignment | SeriesAlignment | None, photo: Photo, cc: CategoryContext) -> bool:
     if a is None or a.stale or not a.output_path:
         return True
-    if a.reference_photo_id != cc.reference.id or a.pose_category_id != cc.cat.id:
+    if a.reference_photo_id != cc.reference.id:
+        return True
+    if isinstance(a, Alignment) and a.pose_category_id != cc.cat.id:
         return True
     if (a.canvas_w, a.canvas_h) != (cc.settings.canvas_w, cc.settings.canvas_h):
         return True
@@ -599,6 +629,53 @@ def job_align(ctx: JobContext, params: dict) -> dict:
     if errors:
         msg += f"; {len(errors)} failed"
     return {"message": msg, "aligned": done_total, "skipped_categories": skipped_cats, "errors": errors[:20]}
+
+
+@job("align_series", lane="cv", title="Align daily series")
+def job_align_series(ctx: JobContext, params: dict) -> dict:
+    """Align a daily capture series onto its own reference (picked once, then kept)."""
+    sid = int(params["series_id"])
+    ids = params.get("ids")
+    force = bool(params.get("force"))
+    with ctx.session() as s:
+        settings = load_settings(s)
+        series = s.get(CaptureSeries, sid)
+        if series is None:
+            raise ValueError("series not found")
+        try:
+            cc = category_context(s, series, settings)
+        except LookupError as e:
+            return {"message": f"Not aligned yet: {e}", "aligned": 0}
+        stmt = select(Photo).where(Photo.capture_series_id == sid)
+        if ids:
+            stmt = stmt.where(Photo.id.in_(ids))
+        rows = s.exec(stmt.order_by(Photo.taken_at)).all()
+        # a new reference (the first photos of a series) means everything is redone
+        todo = [p.id for p in rows if force or ids or needs_work(alignment_row(s, p.id, cc), p, cc)]
+        stale_rest = [
+            p.id for p in s.exec(select(Photo).where(Photo.capture_series_id == sid)).all()
+            if p.id not in todo and needs_work(alignment_row(s, p.id, cc), p, cc)
+        ]
+        todo += stale_rest
+        total = len(todo)
+        ctx.progress(0, total, f"{series.name}: aligning {total} photos")
+        done, errors = 0, []
+        for i, pid in enumerate(todo, 1):
+            ctx.check_cancelled()
+            photo = s.get(Photo, pid)
+            if photo is None:
+                continue
+            try:
+                align_photo(s, photo, cc, keep_manual=not force)
+                s.commit()
+                done += 1
+            except Exception as e:
+                s.rollback()
+                log.warning("series align failed for %s: %s", pid, e)
+                errors.append(f"photo {pid}: {e}")
+            ctx.progress(i, total, f"{series.name}: {i}/{total}")
+    msg = f"{series.name}: aligned {done} photos" + (f"; {len(errors)} failed" if errors else "")
+    return {"message": msg, "aligned": done, "errors": errors[:20]}
 
 
 # ----------------------------------------------------------------------------- evaluation

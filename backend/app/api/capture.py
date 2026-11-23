@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import tempfile
+from datetime import date
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
@@ -29,6 +30,7 @@ def series_out(s: Session, row: CaptureSeries) -> dict[str, Any]:
     last = C._edge(s, row, newest=True)
     return {
         **row.model_dump(mode="json"),
+        **({"streak": C.streak(s, row)} if row.mode == "daily" else {}),
         "photo_count": count,
         "last_taken_at": last.taken_at.isoformat() if last and last.taken_at else None,
         "last_thumb_url": f"/api/photos/{last.id}/thumb" if last else None,
@@ -130,6 +132,30 @@ def patch_series(sid: int, body: SeriesPatch, s: Session = Depends(get_session))
 def get_ghost(sid: int, source: str | None = None, s: Session = Depends(get_session)) -> dict[str, Any]:
     info = C.ghost_info(s, _series(s, sid), source)
     return {"ghost": info}
+
+
+@router.get("/series/{sid}/sequence")
+def series_sequence(sid: int, from_: date | None = Query(None, alias="from"), to: date | None = None, s: Session = Depends(get_session)) -> dict[str, Any]:
+    """Frames of a daily series for the Viewer (flipbook) and export."""
+    return C.series_sequence(s, _series(s, sid), from_, to)
+
+
+@router.get("/series/{sid}/aligned/{photo_id}")
+def series_aligned(sid: int, photo_id: int, s: Session = Depends(get_session)):
+    from ..models import SeriesAlignment
+
+    a = s.get(SeriesAlignment, (sid, photo_id))
+    if a is None or not a.output_path or not config.abs_path(a.output_path).exists():
+        raise HTTPException(404, "not aligned yet")
+    return FileResponse(config.abs_path(a.output_path), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=31536000"})
+
+
+@router.post("/series/{sid}/align")
+def align_series(sid: int, force: bool = False, s: Session = Depends(get_session)) -> dict[str, Any]:
+    from ..jobs import job_to_dict
+
+    _series(s, sid)
+    return job_to_dict(runner().enqueue("align_series", {"series_id": sid, "force": force}))
 
 
 @router.get("/ghost/{photo_id}/edges")

@@ -30,7 +30,8 @@ class CaptionIn(BaseModel):
 
 class ExportIn(BaseModel):
     pose_id: int | None = None
-    group: str | None = Field(None, pattern="^(abs|face)$")  # close-up groups instead of a pose category
+    group: str | None = Field(None, pattern="^(abs|face|series)$")  # close-up groups / a daily series instead of a pose
+    series_id: int | None = None  # with group="series"
     from_: date | None = Field(None, alias="from")
     to: date | None = None
     fps: float = Field(2.0, ge=0.05, le=60)  # photos per second
@@ -60,6 +61,11 @@ class ExportIn(BaseModel):
 def create(body: ExportIn, s: Session = Depends(get_session)) -> dict[str, Any]:
     if body.group is None and (body.pose_id is None or s.get(PoseCategory, body.pose_id) is None):
         raise HTTPException(404, "pose category not found")
+    if body.group == "series":
+        from ..models import CaptureSeries
+
+        if body.series_id is None or s.get(CaptureSeries, body.series_id) is None:
+            raise HTTPException(404, "series not found")
     params = body.model_dump(by_alias=True, mode="json")
     params["pose_id"] = body.pose_id
     ex = Export(pose_category_id=body.pose_id, format=body.format, params=params, status="queued")

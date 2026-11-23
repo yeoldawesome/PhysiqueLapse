@@ -5,7 +5,7 @@ landmarks + alignment without classification)."""
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -193,8 +193,79 @@ def ingest_capture(
 
 
 def processing_after_capture(series: CaptureSeries, photo_id: int) -> list[tuple[str, dict]]:
-    """Landmarks, then alignment (no classification: the pose is known)."""
+    """Landmarks, then alignment: onto the pose (no classification: the pose is known) and, for
+    a daily series, onto the series' own reference."""
     steps: list[tuple[str, dict]] = [("extract_landmarks", {"ids": [photo_id]})]
     if series.pose_category_id is not None:
         steps.append(("align_photos", {"ids": [photo_id]}))
+    if series.mode == "daily":
+        steps.append(("align_series", {"series_id": series.id, "ids": [photo_id]}))
     return steps
+
+
+# ----------------------------------------------------------------------------- daily: streak, sequence
+
+
+def streak(s: Session, series: CaptureSeries, today: date | None = None, days: int = 7) -> dict[str, Any]:
+    """Taken today?, the run of consecutive days with a photo (ending today, or yesterday when
+    today's isn't taken yet), and the last `days` days for the filmstrip (newest photo per day)."""
+    today = today or now().date()
+    rows = s.exec(series_photos(series).where(Photo.taken_at.is_not(None)).order_by(Photo.taken_at.desc(), Photo.id.desc())).all()
+    by_day: dict[date, Photo] = {}
+    for p in rows:
+        by_day.setdefault(p.taken_at.date(), p)
+    run, d = 0, today if today in by_day else today - timedelta(days=1)
+    while d in by_day:
+        run += 1
+        d -= timedelta(days=1)
+    strip = []
+    for i in range(days - 1, -1, -1):
+        day = today - timedelta(days=i)
+        p = by_day.get(day)
+        strip.append({"date": day.isoformat(), "photo_id": p.id if p else None, "thumb_url": f"/api/photos/{p.id}/thumb" if p else None})
+    return {"taken_today": today in by_day, "streak": run, "days": strip}
+
+
+def series_sequence(s: Session, series: CaptureSeries, from_: date | None = None, to: date | None = None) -> dict[str, Any]:
+    """The Viewer's frame list for a daily series (same shape as a pose's sequence)."""
+    from ..models import SeriesAlignment
+
+    stmt = select(Photo).where(Photo.capture_series_id == series.id, Photo.excluded == False, Photo.taken_at.is_not(None))  # noqa: E712
+    if from_:
+        stmt = stmt.where(Photo.taken_at >= datetime.combine(from_, datetime.min.time()))
+    if to:
+        stmt = stmt.where(Photo.taken_at < datetime.combine(to + timedelta(days=1), datetime.min.time()))
+    photos = list(s.exec(stmt.order_by(Photo.taken_at, Photo.id)).all())
+    first = photos[0].taken_at if photos else None
+    frames, unaligned = [], 0
+    for p in photos:
+        a = s.get(SeriesAlignment, (series.id, p.id))
+        ok = a is not None and bool(a.output_path) and (config.abs_path(a.output_path).exists())
+        if not ok or a.stale:
+            unaligned += 1
+        v = int(a.computed_at.timestamp()) if ok and a.computed_at else 0
+        frames.append({
+            "id": p.id,
+            "taken_at": p.taken_at.isoformat(),
+            "days_since_start": (p.taken_at.date() - first.date()).days if first else None,
+            "aligned_url": f"/api/capture/series/{series.id}/aligned/{p.id}?v={v}" if ok else None,
+            "preview_url": f"/api/photos/{p.id}/preview",
+            "flags": (a.flags or {}) if ok else {},
+            "method": a.method if ok else None,
+            "stale": bool(a.stale) if ok else True,
+            "flip_horizontal": False,  # the series frames are rendered as shot
+            "sleeves": p.sleeves,
+            "stats": [],
+            "measurements": {},
+            "pose_diff_pct": None,
+        })
+    settings = load_settings(s)
+    return {
+        "series_id": series.id,
+        "canvas_w": settings.canvas_w,
+        "canvas_h": settings.canvas_h,
+        "reference_photo_id": series.reference_photo_id,
+        "frames": frames,
+        "unaligned": unaligned,
+        "without_date": 0,
+    }

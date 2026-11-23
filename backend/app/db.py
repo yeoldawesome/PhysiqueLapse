@@ -14,7 +14,7 @@ from .models import Metric, PoseCategory, Setting
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 _engine = None
 
@@ -127,6 +127,8 @@ _MIGRATIONS: dict[int, list[str]] = {
         "ALTER TABLE photos ADD COLUMN capture JSON",
         "CREATE INDEX IF NOT EXISTS ix_photos_capture_series_id ON photos (capture_series_id)",
     ],
+    # 12: daily-series alignment (table series_alignments, made by create_all)
+    12: [],
 }
 
 

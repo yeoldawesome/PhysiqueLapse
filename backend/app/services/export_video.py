@@ -246,12 +246,29 @@ def job_export(ctx: JobContext, params: dict) -> dict:
         group = prm.get("group")
         pose_id = int(prm["pose_id"]) if prm.get("pose_id") is not None else -1
         cat = s.get(PoseCategory, pose_id) if pose_id > 0 else None
-        cat_name = {"abs": "Abs", "face": "Face"}.get(group) or (cat.name if cat else "pose")
+        series = None
+        if group == "series":
+            from ..models import CaptureSeries
+
+            series = s.get(CaptureSeries, int(prm["series_id"]))
+            if series is None:
+                raise ValueError("series not found")
+        cat_name = series.name if series else ({"abs": "Abs", "face": "Face"}.get(group) or (cat.name if cat else "pose"))
         settings = load_settings(s)
         dfrom = date.fromisoformat(prm["from"]) if prm.get("from") else None
         dto = date.fromisoformat(prm["to"]) if prm.get("to") else None
         mpd = prm.get("max_pose_diff_pct")
-        if group in ("abs", "face"):
+        if group == "series":
+            from .align import series_output_path
+            from .capture import series_sequence
+
+            seq = series_sequence(s, series, dfrom, dto)
+            photos = [s.get(Photo, f["id"]) for f in seq["frames"] if f["aligned_url"]]
+            skipped = len(seq["frames"]) - len(photos)
+            sid = series.id
+            frame_path = lambda p: series_output_path(sid, p.id)  # noqa: E731
+            canvas_w, canvas_h = settings.canvas_w, settings.canvas_h
+        elif group in ("abs", "face"):
             from . import abs_view, face_view
 
             mod = abs_view if group == "abs" else face_view

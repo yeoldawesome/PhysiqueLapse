@@ -194,6 +194,31 @@ class Alignment(SQLModel, table=True):
     computed_at: NaiveDatetime = Field(default_factory=now)
 
 
+class SeriesAlignment(SQLModel, table=True):
+    """Alignment of a photo inside a daily capture series (its own reference and canvas file),
+    kept apart from the pose alignment so a photo can be in both."""
+
+    __tablename__ = "series_alignments"
+
+    series_id: int = Field(primary_key=True, foreign_key="capture_series.id")
+    photo_id: int = Field(primary_key=True, foreign_key="photos.id")
+    reference_photo_id: int | None = None
+    canvas_w: int = 1080
+    canvas_h: int = 1350
+    scale: float = 1.0
+    rotation_deg: float = 0.0
+    tx: float = 0.0
+    ty: float = 0.0
+    method: str = "auto"
+    scale_basis_used: str = "fit"
+    flags: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    residual_px: float | None = None
+    joint_residual_px: float | None = None
+    output_path: str | None = None
+    stale: bool = False
+    computed_at: NaiveDatetime = Field(default_factory=now)
+
+
 class PhotoMeasurement(SQLModel, table=True):
     """Body-size estimates from one photo (see services/measure.py). data = {name: {valid, ratio, px, line, why}}."""
 

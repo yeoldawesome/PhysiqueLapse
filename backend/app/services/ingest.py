@@ -249,6 +249,12 @@ def delete_photo(s: Session, photo: Photo, *, remember: bool = True) -> None:
     for cs in s.exec(select(CaptureSeries).where(CaptureSeries.reference_photo_id == pid)).all():
         cs.reference_photo_id = None
         s.add(cs)
+    from ..models import SeriesAlignment
+
+    for sa in s.exec(select(SeriesAlignment).where(SeriesAlignment.photo_id == pid)).all():
+        if sa.output_path:
+            config.abs_path(sa.output_path).unlink(missing_ok=True)
+        s.delete(sa)
     from ..models import PersonFace
 
     for model in (Alignment, PoseFeatures, PhotoMeasurement, PersonFace):
