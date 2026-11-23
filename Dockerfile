@@ -23,7 +23,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DATA_DIR=/data \
     PORT=8420 \
     HF_HUB_OFFLINE=1 \
-    HF_HUB_DISABLE_TELEMETRY=1     MPLCONFIGDIR=/tmp/matplotlib
+    HF_HUB_DISABLE_TELEMETRY=1
 
 # OpenCV / MediaPipe runtime libraries
 RUN apt-get update \
@@ -38,6 +38,10 @@ RUN python -c "import tomllib; p = tomllib.load(open('backend/pyproject.toml', '
 print('\n'.join(p['dependencies'] + p['optional-dependencies']['server']))" > /tmp/requirements.txt \
  && pip install -r /tmp/requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu \
  && rm /tmp/requirements.txt
+
+# Settings added later go here, after the slow dependency layer, so changing them never
+# re-downloads the packages.
+ENV MPLCONFIGDIR=/tmp/matplotlib
 
 # The app runs from its source folder, like a checkout (config.PROJECT_ROOT = /app).
 COPY backend/ backend/
