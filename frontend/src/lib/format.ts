@@ -72,10 +72,12 @@ export const DATE_SOURCE_LABEL: Record<string, string> = {
   filename: "filename",
   file_mtime: "file time",
   manual: "manual",
+  capture: "captured",
   none: "none",
 };
 
 export const POSE_SOURCE_LABEL: Record<string, string> = {
+  capture: "captured",
   rule: "rule",
   knn: "kNN",
   manual: "manual",

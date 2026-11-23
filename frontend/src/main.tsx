@@ -15,6 +15,8 @@ import Editor from "./pages/Editor";
 import People from "./pages/People";
 import Guide from "./pages/Guide";
 import Login from "./pages/Login";
+import Capture from "./pages/Capture";
+import { startOutbox } from "./lib/outbox";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,6 +40,7 @@ const router = createBrowserRouter([
       { path: "editor/:photoId", element: <Editor /> },
       { path: "stats", element: <Stats /> },
       { path: "settings", element: <Settings /> },
+      { path: "capture", element: <Capture /> },
     ],
   },
 ]);
@@ -47,6 +50,9 @@ const router = createBrowserRouter([
 if ("serviceWorker" in navigator && window.location.protocol === "https:") {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
+
+// photos taken on the Capture page upload in the background, retried until they make it
+startOutbox();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

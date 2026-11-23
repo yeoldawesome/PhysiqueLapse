@@ -3,6 +3,7 @@ import { Navigate, NavLink, Outlet, useLocation } from "react-router";
 import {
   Activity,
   BookOpen,
+  Camera,
   Images,
   LayoutDashboard,
   ListChecks,
@@ -30,6 +31,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: "/guide", label: "Start here", icon: BookOpen },
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/capture", label: "Capture", icon: Camera },
   { to: "/library", label: "Library", icon: Images },
   { to: "/import", label: "Import", icon: Upload },
   { to: "/review", label: "Review queue", icon: ListChecks },
@@ -43,7 +45,7 @@ const NAV: NavItem[] = [
 const TABS: NavItem[] = [
   { to: "/", label: "Home", icon: LayoutDashboard, end: true },
   { to: "/library", label: "Library", icon: Images },
-  { to: "/import", label: "Upload", icon: Upload },
+  { to: "/capture", label: "Capture", icon: Camera },
   { to: "/viewer", label: "Viewer", icon: Play },
 ];
 
@@ -159,7 +161,13 @@ function Shell({ server }: { server: boolean }) {
               `relative flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] ${isActive ? "text-accent" : "text-muted"}`
             }
           >
-            <Icon size={20} />
+            {to === "/capture" ? (
+              <span className="-mt-5 flex h-12 w-12 items-center justify-center rounded-full bg-accent-2 text-white shadow-lg shadow-black/40">
+                <Icon size={24} />
+              </span>
+            ) : (
+              <Icon size={20} />
+            )}
             {label}
             {to === "/library" && b.needsReview > 0 && <span className="absolute right-[calc(50%-18px)] top-2 h-2 w-2 rounded-full bg-warn" />}
           </NavLink>
