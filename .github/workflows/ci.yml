@@ -83,7 +83,7 @@ jobs:
           docker run -d --name pl -p 127.0.0.1:8420:8420 -v /tmp/pl-data:/data -e PL_AUTO_DOWNLOAD_MODELS=0 physiquelapse:ci
           for i in $(seq 1 60); do curl -fs http://127.0.0.1:8420/api/health && break; sleep 2; done
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8420/api/dashboard)" = "401"
-          echo "long enough test password" | docker exec -i pl python -m app.auth set-password --stdin
+          echo "long enough test password" | docker exec -i pl python -m app.accounts create-admin --email ci@example.com --stdin
           curl -fs http://127.0.0.1:8420/ | grep -q '<div id="root">'
           docker logs pl | tail -20
           docker rm -f pl

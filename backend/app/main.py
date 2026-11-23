@@ -44,34 +44,51 @@ def _register_job_handlers() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    init_db()
+    if config.SERVER:
+        from . import accounts
+
+        accounts.connect().close()  # creates the accounts database on first start
+    else:
+        init_db()  # the desktop app's one library
     _register_job_handlers()
     runner().start()
     log.info("mode: %s, data dir: %s", config.MODE, config.DATA_DIR)
     if config.SERVER:
-        from sqlmodel import Session
-
-        from .auth import password_is_set
-        from .db import engine
-
-        with Session(engine()) as s:
-            if not password_is_set(s):
-                log.warning("no login password set. Run: docker compose exec physiquelapse python -m app.auth set-password")
-            # first start of a new volume: fetch the models into DATA_DIR/models (one time;
-            # progress shows in the job panel). The desktop app does the same from desktop.py.
-            try:
-                from .services import model_files
-                from .settings import load_settings
-
-                variant = load_settings(s).pose_model
-                if config._env_bool("PL_AUTO_DOWNLOAD_MODELS", True) and model_files.missing(variant):
-                    runner().enqueue("download_models", {"pose_variant": variant})
-            except Exception as e:
-                log.warning("model check failed: %s", e)
+        _server_startup_checks()
     try:
         yield
     finally:
         runner().stop()
+
+
+def _server_startup_checks() -> None:
+    from . import accounts
+
+    n = accounts.count_users()
+    if n == 0:
+        log.warning("no accounts yet. Run: docker compose exec physiquelapse python -m app.accounts create-admin --email you@example.com")
+    if (config.DATA_DIR / "physiquelapse.db").exists():
+        log.warning(
+            "a library from before accounts is in %s. Move it to your account with: "
+            "docker compose exec physiquelapse python -m app.accounts migrate-library --email you@example.com", config.DATA_DIR,
+        )
+    if not config.PUBLIC_URL:
+        log.info("PL_PUBLIC_URL is not set: links in emails use the address the request came in on")
+    # first start of a new volume: fetch the shared models (one time) in the background
+    if config._env_bool("PL_AUTO_DOWNLOAD_MODELS", True):
+        import threading
+
+        from .services import model_files
+
+        def fetch() -> None:
+            for m in model_files.missing("heavy"):
+                try:
+                    log.info("downloading %s from %s", m.label, m.url)
+                    model_files.download(m.url, m.path)
+                except Exception as e:
+                    log.warning("could not download %s: %s", m.label, e)
+
+        threading.Thread(target=fetch, name="model-download", daemon=True).start()
 
 
 def create_app() -> FastAPI:

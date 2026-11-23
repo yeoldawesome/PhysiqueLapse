@@ -41,36 +41,39 @@ def session(data_dir):
 
 
 TEST_PASSWORD = "correct horse battery"
+TEST_EMAIL = "owner@example.com"
 
 
-def _login(c) -> None:
-    from sqlmodel import Session
+def make_account(email: str = TEST_EMAIL, password: str = TEST_PASSWORD, *, admin: bool = False):
+    from app import accounts
 
-    from app import auth
-    from app.db import engine
+    return accounts.create_user(email, password, email.split("@")[0], is_admin=admin)
 
-    with Session(engine()) as s:
-        auth.set_password(s, TEST_PASSWORD)
-    r = c.post("/api/auth/login", json={"password": TEST_PASSWORD})
+
+def login(c, email: str = TEST_EMAIL, password: str = TEST_PASSWORD) -> None:
+    r = c.post("/api/auth/login", json={"email": email, "password": password})
     assert r.status_code == 200, r.text
 
 
 @pytest.fixture()
 def client(data_dir, tmp_path, monkeypatch):
-    """API client. With PL_MODE=server (CI runs the suite in both modes) it logs in first, so
-    every existing test also runs behind the login."""
+    """API client. With PL_MODE=server (CI runs the suite in both modes) it signs in to an admin
+    account first, so every existing test also runs behind the login, in that account's own
+    library (which the test itself then uses too)."""
     from fastapi.testclient import TestClient
 
-    from app import auth, config, jobs
+    from app import auth, config, jobs, tenancy
     from app.main import create_app
 
     jobs._runner = None
-    auth.limiter.reset()
+    auth.reset_limiters()
     app = create_app()
     # https: the session cookie is Secure
     with TestClient(app, base_url="https://testserver") as c:
         if config.SERVER:
-            _login(c)
+            u = make_account(admin=True)
+            login(c)
+            monkeypatch.setattr(tenancy, "_default", tenancy.library_for_user(u.id))
             # path imports are limited to PL_IMPORT_ROOTS in server mode: allow the test's folder
             monkeypatch.setattr(config, "IMPORT_ROOTS", [tmp_path.resolve()])
         yield c
@@ -79,20 +82,19 @@ def client(data_dir, tmp_path, monkeypatch):
 
 @pytest.fixture()
 def server_client(data_dir, monkeypatch):
-    """A client in server mode, NOT logged in (password set to TEST_PASSWORD)."""
+    """A client in server mode with one admin account (TEST_EMAIL / TEST_PASSWORD), NOT signed in,
+    and no default library (as on the real server)."""
     from fastapi.testclient import TestClient
-    from sqlmodel import Session
 
-    from app import auth, config, jobs
-    from app.db import engine
+    from app import auth, config, jobs, tenancy
     from app.main import create_app
 
     monkeypatch.setattr(config, "SERVER", True)
     monkeypatch.setattr(config, "MODE", "server")
     jobs._runner = None
-    auth.limiter.reset()
-    with Session(engine()) as s:
-        auth.set_password(s, TEST_PASSWORD)
+    auth.reset_limiters()
+    make_account(admin=True)
+    monkeypatch.setattr(tenancy, "_default", None)
     app = create_app()
     with TestClient(app, base_url="https://testserver") as c:
         yield c

@@ -7,7 +7,7 @@ from datetime import datetime
 
 import pytest
 
-from .conftest import TEST_PASSWORD, image_bytes, make_image, save_image
+from .conftest import image_bytes, login, make_image, save_image
 
 
 def wait_job(client, job_id, timeout=30):
@@ -171,7 +171,7 @@ def test_server_mode_path_import_needs_allowed_root(server_client, monkeypatch, 
     from app import config
 
     c = server_client
-    c.post("/api/auth/login", json={"password": TEST_PASSWORD})
+    login(c)
     folder = tmp_path / "photos"
     folder.mkdir()
     monkeypatch.setattr(config, "IMPORT_ROOTS", [])

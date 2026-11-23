@@ -117,4 +117,7 @@ def test_api_works_on_the_default_library(client, data_dir):
     sess = client.post("/api/imports/upload-session").json()
     r = client.post(f"/api/imports/upload-session/{sess['id']}/files", files=[("files", ("a.jpg", image_bytes(make_image(seed=5)), "image/jpeg"))])
     assert r.status_code == 200
-    assert (data_dir / "incoming" / str(sess["id"]) / "a.jpg").exists()
+    from app import config
+
+    # desktop: the data folder itself; server: the signed-in account's library
+    assert (config.INCOMING_DIR / str(sess["id"]) / "a.jpg").exists()

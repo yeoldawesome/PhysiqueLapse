@@ -1,39 +1,40 @@
-"""Server mode login: one user, one password (argon2), cookie sessions.
+"""Server mode sign-in: accounts (see accounts.py), cookie sessions, rate limits, headers.
 
 Desktop mode never uses any of this: `config.auth_required()` is False and the middleware
-lets every request through.
+lets every request through (to the one desktop library).
 
-Set the password on the server:
-
-    docker compose exec physiquelapse python -m app.auth set-password
-    docker compose exec physiquelapse python -m app.auth revoke-sessions   # log out everywhere
+In server mode every /api route except the few in PUBLIC_API needs a session; the request then
+runs inside that account's own library (tenancy), so it can only ever see that account's data.
 """
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import secrets
 import threading
 import time
-from datetime import timedelta
 from urllib.parse import urlsplit
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlmodel import Session, delete, select
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from . import config
-from .db import engine
-from .models import AuthSession, AuthState, now
+from . import config, tenancy
 
 log = logging.getLogger(__name__)
 
 COOKIE_NAME = "pl_session"
-MIN_PASSWORD_LEN = 10
-# /api paths reachable without a session
-PUBLIC_API = {"/api/health", "/api/auth/login", "/api/auth/status", "/api/auth/logout"}
+# /api paths reachable without a session (they never touch a library)
+PUBLIC_API = {
+    "/api/health",
+    "/api/auth/login",
+    "/api/auth/status",
+    "/api/auth/logout",
+    "/api/auth/signup",
+    "/api/auth/forgot",
+    "/api/auth/reset",
+}
 _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
@@ -47,168 +48,69 @@ def _hasher():
 
 
 def hash_password(password: str) -> str:
-    if len(password) < MIN_PASSWORD_LEN:
-        raise ValueError(f"password must be at least {MIN_PASSWORD_LEN} characters")
     return _hasher().hash(password)
-
-
-def password_is_set(s: Session) -> bool:
-    return s.get(AuthState, 1) is not None
-
-
-def set_password(s: Session, password: str) -> None:
-    h = hash_password(password)
-    row = s.get(AuthState, 1)
-    if row is None:
-        row = AuthState(id=1, password_hash=h)
-    else:
-        row.password_hash = h
-        row.updated_at = now()
-    s.add(row)
-    # a new password logs every browser out
-    s.exec(delete(AuthSession))
-    s.commit()
-
-
-def verify_password(s: Session, password: str) -> bool:
-    row = s.get(AuthState, 1)
-    if row is None:
-        # spend the same time as a real check so timing doesn't reveal "no password set"
-        try:
-            _hasher().verify(_DUMMY_HASH(), password)
-        except Exception:
-            pass
-        return False
-    from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
-
-    ph = _hasher()
-    try:
-        ph.verify(row.password_hash, password)
-    except (VerifyMismatchError, VerificationError, InvalidHashError):
-        return False
-    if ph.check_needs_rehash(row.password_hash):
-        row.password_hash = ph.hash(password)
-        s.add(row)
-        s.commit()
-    return True
 
 
 _dummy: str | None = None
 
 
-def _DUMMY_HASH() -> str:  # noqa: N802
+def dummy_hash() -> str:
+    """A real hash to verify against when an email doesn't exist (same timing either way)."""
     global _dummy
     if _dummy is None:
         _dummy = _hasher().hash(secrets.token_urlsafe(16))
     return _dummy
 
 
-# ----------------------------------------------------------------------------- sessions
-
-
-def _sha(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
-
-
-def create_session(s: Session, user_agent: str = "") -> str:
-    token = secrets.token_urlsafe(32)
-    s.add(AuthSession(token_sha256=_sha(token), expires_at=now() + timedelta(days=config.SESSION_DAYS), user_agent=user_agent[:200]))
-    # tidy up expired rows while we're here
-    s.exec(delete(AuthSession).where(AuthSession.expires_at < now()))
-    s.commit()
-    return token
-
-
-_TOUCH_EVERY = timedelta(minutes=5)
-
-
-def check_session(s: Session, token: str | None) -> bool:
-    """Valid, unexpired session? Sliding expiry: use extends it."""
-    if not token:
-        return False
-    row = s.get(AuthSession, _sha(token))
-    if row is None:
-        return False
-    t = now()
-    if row.expires_at < t:
-        s.delete(row)
-        s.commit()
-        return False
-    if t - row.last_seen_at > _TOUCH_EVERY:
-        row.last_seen_at = t
-        row.expires_at = t + timedelta(days=config.SESSION_DAYS)
-        s.add(row)
-        s.commit()
-    return True
-
-
-def end_session(s: Session, token: str | None) -> None:
-    if token:
-        row = s.get(AuthSession, _sha(token))
-        if row is not None:
-            s.delete(row)
-            s.commit()
-
-
-def revoke_all(s: Session) -> int:
-    n = len(s.exec(select(AuthSession.token_sha256)).all())
-    s.exec(delete(AuthSession))
-    s.commit()
-    return n
+# ----------------------------------------------------------------------------- cookies
 
 
 def set_cookie(response, token: str) -> None:
     response.set_cookie(
         COOKIE_NAME, token, max_age=config.SESSION_DAYS * 86400, httponly=True,
-        secure=config.COOKIE_SECURE, samesite="strict", path="/",
+        secure=config.COOKIE_SECURE, samesite="lax", path="/",
     )
 
 
 def clear_cookie(response) -> None:
-    response.delete_cookie(COOKIE_NAME, path="/", httponly=True, secure=config.COOKIE_SECURE, samesite="strict")
+    response.delete_cookie(COOKIE_NAME, path="/", httponly=True, secure=config.COOKIE_SECURE, samesite="lax")
 
 
-# ----------------------------------------------------------------------------- rate limit
+# ----------------------------------------------------------------------------- rate limits
 
 
-class LoginLimiter:
-    """Failed logins per client: 5 free attempts, then a lockout that doubles each time
-    (30 s, 60 s, ... up to 1 h). A global cap slows down attempts spread over many addresses."""
+class Limiter:
+    """Failures per key: `free` attempts, then a lockout that doubles each time (base s, up to
+    an hour). A global cap slows attempts spread over many addresses."""
 
-    FREE = 5
-    BASE_LOCK = 30.0
-    MAX_LOCK = 3600.0
-    GLOBAL_PER_MIN = 30
-
-    def __init__(self) -> None:
+    def __init__(self, free: int = 5, base: float = 30.0, max_lock: float = 3600.0, global_per_min: int = 30) -> None:
+        self.free, self.base, self.max_lock, self.global_per_min = free, base, max_lock, global_per_min
         self._lock = threading.Lock()
-        self._fails: dict[str, tuple[int, float]] = {}  # key -> (failures, locked_until)
-        self._recent: list[float] = []  # global failure times
+        self._fails: dict[str, tuple[int, float]] = {}
+        self._recent: list[float] = []
 
-    def retry_after(self, key: str) -> float:
-        """Seconds until this client may try again (0 = now)."""
+    def retry_after(self, *keys: str) -> float:
         t = time.monotonic()
         with self._lock:
             self._recent = [x for x in self._recent if t - x < 60]
-            if len(self._recent) >= self.GLOBAL_PER_MIN:
+            if len(self._recent) >= self.global_per_min:
                 return max(1.0, 60 - (t - self._recent[0]))
-            _, until = self._fails.get(key, (0, 0.0))
-            return max(0.0, until - t)
+            return max([0.0] + [self._fails.get(k, (0, 0.0))[1] - t for k in keys])
 
-    def failed(self, key: str) -> None:
+    def failed(self, *keys: str) -> None:
         t = time.monotonic()
         with self._lock:
             self._recent.append(t)
-            n, _ = self._fails.get(key, (0, 0.0))
-            n += 1
-            until = 0.0
-            if n >= self.FREE:
-                until = t + min(self.MAX_LOCK, self.BASE_LOCK * 2 ** (n - self.FREE))
-            self._fails[key] = (n, until)
+            for k in keys:
+                n, _ = self._fails.get(k, (0, 0.0))
+                n += 1
+                until = t + min(self.max_lock, self.base * 2 ** (n - self.free)) if n >= self.free else 0.0
+                self._fails[k] = (n, until)
 
-    def succeeded(self, key: str) -> None:
+    def succeeded(self, *keys: str) -> None:
         with self._lock:
-            self._fails.pop(key, None)
+            for k in keys:
+                self._fails.pop(k, None)
 
     def reset(self) -> None:
         with self._lock:
@@ -216,12 +118,30 @@ class LoginLimiter:
             self._recent.clear()
 
 
-limiter = LoginLimiter()
+limiter = Limiter()  # wrong passwords, per address and per email
+signup_limiter = Limiter(free=5, base=60.0, global_per_min=20)  # bad invite codes
+forgot_limiter = Limiter(free=3, base=120.0, global_per_min=10)  # reset emails
+
+
+def reset_limiters() -> None:
+    for lim in (limiter, signup_limiter, forgot_limiter):
+        lim.reset()
 
 
 def client_key(request: Request) -> str:
-    # uvicorn --proxy-headers already replaced client.host with the forwarded address
-    return request.client.host if request.client else "unknown"
+    """The visitor's address. Through Cloudflare's tunnel it's CF-Connecting-IP (set by
+    Cloudflare, not by the visitor); otherwise the proxy-resolved client address."""
+    cf = request.headers.get("cf-connecting-ip")
+    if cf:
+        return "ip:" + cf.strip()
+    return "ip:" + (request.client.host if request.client else "unknown")
+
+
+def check_limit(lim: Limiter, *keys: str) -> None:
+    wait = lim.retry_after(*keys)
+    if wait > 0:
+        s = int(wait) + 1
+        raise HTTPException(429, f"Too many attempts. Try again in {s} s.", headers={"Retry-After": str(s)})
 
 
 # ----------------------------------------------------------------------------- middleware
@@ -230,20 +150,32 @@ def client_key(request: Request) -> str:
 def _origin_ok(request: Request) -> bool:
     origin = request.headers.get("origin")
     if not origin or origin == "null":
-        # no Origin: not a cross-site browser request (SameSite=Strict covers the cookie);
-        # "null" from a sandboxed/opaque context is refused below for unsafe methods
+        # no Origin: not a cross-site browser request; "null" (sandboxed page) is refused
         return origin is None
     o = origin.rstrip("/")
-    if o in config.ALLOWED_ORIGINS:
+    if o in config.ALLOWED_ORIGINS or (config.PUBLIC_URL and o == config.PUBLIC_URL):
         return True
     host = urlsplit(o).netloc.lower()
     hosts = {h.strip().lower() for h in (request.headers.get("host"), request.headers.get("x-forwarded-host")) if h}
     return host in hosts
 
 
+def current_user(request: Request):
+    """The signed-in account (server mode), or None (desktop app)."""
+    return getattr(request.state, "user", None)
+
+
+def require_admin(request: Request):
+    u = current_user(request)
+    if u is None or not u.is_admin:
+        raise HTTPException(403, "admins only")
+    return u
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Server mode: every /api route needs a session cookie, and state-changing requests must
-    come from our own origin. Pages and built assets stay public (the login page is one)."""
+    """Server mode: every /api route needs a session, state-changing requests must come from our
+    own origin, and the request runs in the signed-in account's library. Pages and built
+    assets stay public (the sign-in page is one)."""
 
     async def dispatch(self, request: Request, call_next):
         if not config.auth_required():
@@ -255,11 +187,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse({"detail": "cross-origin request refused"}, status_code=403)
         if path in PUBLIC_API:
             return await call_next(request)
-        with Session(engine()) as s:
-            ok = check_session(s, request.cookies.get(COOKIE_NAME))
-        if not ok:
+        from . import accounts
+
+        user = await run_in_threadpool(accounts.user_for_session, request.cookies.get(COOKIE_NAME))
+        if user is None:
             return JSONResponse({"detail": "login required"}, status_code=401)
-        return await call_next(request)
+        request.state.user = user
+        token = tenancy.set_for_request(tenancy.library_for_user(user.id))
+        try:
+            response = await call_next(request)
+        finally:
+            tenancy.reset(token)
+        # personal data: never stored by Cloudflare or any other shared cache
+        cc = response.headers.get("cache-control", "")
+        if "private" not in cc and "no-store" not in cc:
+            response.headers["Cache-Control"] = "private, no-store"
+        return response
 
 
 SECURITY_HEADERS = {
@@ -287,47 +230,5 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
-# ----------------------------------------------------------------------------- CLI
-
-
-def _cli(argv: list[str] | None = None) -> int:
-    import argparse
-    import getpass
-    import sys
-
-    from .db import init_db
-
-    p = argparse.ArgumentParser(prog="python -m app.auth", description="PhysiqueLapse server login")
-    sub = p.add_subparsers(dest="cmd", required=True)
-    sp = sub.add_parser("set-password", help="set or change the password (logs every browser out)")
-    sp.add_argument("--stdin", action="store_true", help="read the password from standard input")
-    sub.add_parser("revoke-sessions", help="log out every browser")
-    sub.add_parser("status", help="is a password set, how many sessions")
-    a = p.parse_args(argv)
-
-    init_db()
-    with Session(engine()) as s:
-        if a.cmd == "set-password":
-            if a.stdin:
-                pw = sys.stdin.readline().rstrip("\r\n")
-            else:
-                pw = getpass.getpass("New password: ")
-                if getpass.getpass("Again: ") != pw:
-                    print("Passwords don't match.", file=sys.stderr)
-                    return 1
-            try:
-                set_password(s, pw)
-            except ValueError as e:
-                print(str(e), file=sys.stderr)
-                return 1
-            print("Password set. Every browser has been logged out.")
-        elif a.cmd == "revoke-sessions":
-            print(f"Logged out {revoke_all(s)} session(s).")
-        else:
-            n = len(s.exec(select(AuthSession.token_sha256)).all())
-            print(f"mode={config.MODE} password_set={password_is_set(s)} sessions={n} data={config.DATA_DIR}")
-    return 0
-
-
 if __name__ == "__main__":
-    raise SystemExit(_cli())
+    print("Accounts moved: use  python -m app.accounts --help")

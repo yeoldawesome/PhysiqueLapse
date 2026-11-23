@@ -104,6 +104,17 @@ JOB_NICE = _env_int("PL_JOB_NICE", 10 if SERVER else 0)
 THREADS = _env_int("PL_THREADS", 0)  # 0 = automatic (as before)
 
 
+# accounts (server mode): the public address (for links in emails and the Origin check), the
+# default storage allowance per account, and the mail server for password-reset emails
+PUBLIC_URL = (os.environ.get("PL_PUBLIC_URL") or "").strip().rstrip("/")
+QUOTA_MB = max(100, _env_int("PL_QUOTA_MB", 5120))
+SMTP_HOST = os.environ.get("SMTP_HOST") or ""
+SMTP_PORT = _env_int("SMTP_PORT", 587)
+SMTP_USER = os.environ.get("SMTP_USER") or ""
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD") or ""
+SMTP_TLS = (os.environ.get("SMTP_TLS") or "starttls").lower()  # starttls | ssl | none
+MAIL_FROM = os.environ.get("MAIL_FROM") or ""
+
 # uploads from the browser
 MAX_UPLOAD_MB = max(1, _env_int("PL_MAX_UPLOAD_MB", 300))  # per file
 UPLOAD_CHUNK_MB = 8
@@ -194,11 +205,13 @@ def abs_path(stored: str) -> Path:
     return library_root() / stored
 
 
-# the desktop app (and the server until accounts exist) has one library: DATA_DIR itself
+# The desktop app has one library: DATA_DIR itself. On the server every account has its own and
+# there is deliberately no default, so nothing can touch library data outside a signed-in request
+# or that account's jobs.
 def _set_default_library() -> None:
     from .tenancy import Library, set_default
 
-    set_default(Library(0, DATA_DIR))
+    set_default(None if SERVER else Library(0, DATA_DIR))
 
 
 _set_default_library()

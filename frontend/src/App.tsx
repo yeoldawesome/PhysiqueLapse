@@ -11,6 +11,8 @@ import {
   Menu,
   Play,
   Settings as SettingsIcon,
+  Shield,
+  UserCircle,
   Upload,
   UserX,
   X,
@@ -86,9 +88,15 @@ function Badge({ to, b }: { to: string; b: ReturnType<typeof useBadges> }) {
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const b = useBadges();
+  const user = useAuthStatus().data?.user;
+  const items: NavItem[] = [
+    ...NAV,
+    ...(user ? [{ to: "/account", label: "Account", icon: UserCircle }] : []),
+    ...(user?.is_admin ? [{ to: "/admin", label: "Admin", icon: Shield }] : []),
+  ];
   return (
     <nav className="flex flex-col gap-0.5 px-2">
-      {NAV.map(({ to, label, icon: Icon, end }) => (
+      {items.map(({ to, label, icon: Icon, end }) => (
         <NavLink
           key={to}
           to={to}

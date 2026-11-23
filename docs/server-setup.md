@@ -83,7 +83,7 @@ Paths in the database are relative to the library folder, so it works as-is. On 
 cd /opt/physiquelapse
 docker compose up -d --build          # first build: ~10 min
 docker compose logs -f                # first start downloads the models (~650 MB) into /srv/physiquelapse/data/models
-docker compose exec physiquelapse python -m app.auth set-password
+docker compose exec physiquelapse python -m app.accounts create-admin --email you@example.com
 docker compose ps                     # STATUS shows (healthy)
 curl -s http://127.0.0.1:8420/api/health          # {"status":"ok"}
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8420/api/dashboard   # 401 (login required)
@@ -140,9 +140,10 @@ Or the simplest consistent copy: `docker compose stop && rsync -a /srv/physiquel
 | Symptom | Fix |
 |---|---|
 | Container exits with "/data is not writable" | `sudo chown -R 1000:1000 /srv/physiquelapse` (or your `PUID:PGID`) |
-| Login says "No password set yet" | `docker compose exec physiquelapse python -m app.auth set-password` |
-| Forgot the password | same command; it also logs every browser out |
-| Log out every device | `docker compose exec physiquelapse python -m app.auth revoke-sessions` |
+| Sign-in page says "No accounts yet" | `docker compose exec physiquelapse python -m app.accounts create-admin --email you@example.com` |
+| Your old photos are missing after updating to accounts | move the library from before accounts into your account: `docker compose exec physiquelapse python -m app.accounts migrate-library --email you@example.com` |
+| Someone forgot their password | Admin page → Reset link (also emailed when SMTP is set up), or `python -m app.accounts set-password --email them@example.com` |
+| Invite someone | Admin page → Create invite, or `docker compose exec physiquelapse python -m app.accounts invite --note "for Sam"` |
 | Dates are hours off | set `TZ` in `.env`, then `docker compose up -d` |
 | "cross-origin request refused" | you're using an address other than the one in the browser bar; add it to `PL_ALLOWED_ORIGINS` |
 | Camera doesn't start on the phone | the page must be the `https://…ts.net:8443` address, not `http://` |

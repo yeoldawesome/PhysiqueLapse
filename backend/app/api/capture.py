@@ -8,12 +8,12 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
-from .. import config
+from .. import config, quota
 from ..db import get_session
 from ..jobs import runner
 from ..models import CaptureSeries, Photo, PoseCategory
@@ -181,6 +181,7 @@ def ghost_edges(photo_id: int, s: Session = Depends(get_session)):
 
 @router.post("/upload")
 async def upload_capture(
+    request: Request,
     file: UploadFile = File(...),
     series_id: int = Form(...),
     captured_at: str = Form(...),
@@ -190,6 +191,7 @@ async def upload_capture(
 ) -> dict[str, Any]:
     """One photo from the Capture page. Safe to retry: the same file again returns the same photo."""
     series = _series(s, series_id)
+    quota.check(request, file.size or 0)
     try:
         when = C.parse_captured_at(captured_at)
     except ValueError as e:

@@ -66,6 +66,16 @@ def engine():
     return e
 
 
+def dispose_engine_for(db_path) -> None:
+    """Close one library's database (before its folder is deleted or moved)."""
+    key = str(db_path)
+    with _engines_lock:
+        e = _engines.pop(key, None)
+        _ready.discard(key)
+        if e is not None:
+            e.dispose()
+
+
 def dispose_engines() -> None:
     with _engines_lock:
         for e in _engines.values():

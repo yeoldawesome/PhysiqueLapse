@@ -2,10 +2,11 @@
 
 from fastapi import APIRouter
 
-from . import auth, dashboard, imports, jobs, photos, poses, settings
+from . import admin, auth, dashboard, imports, jobs, photos, poses, settings
 
 api = APIRouter(prefix="/api")
 api.include_router(auth.router)
+api.include_router(admin.router)
 api.include_router(dashboard.router)
 api.include_router(settings.router)
 api.include_router(jobs.router)

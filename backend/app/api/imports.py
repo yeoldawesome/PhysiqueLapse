@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from .. import config
+from .. import config, quota
 from ..db import get_session
 from ..jobs import job_to_dict, runner
 from ..models import ImportCandidate, ImportSession, UploadItem, now
@@ -58,6 +58,7 @@ def create_upload_session(s: Session = Depends(get_session)) -> dict[str, Any]:
 @router.post("/upload-session/{session_id}/files")
 async def upload_files(
     session_id: int,
+    request: Request,
     files: list[UploadFile] = File(...),
     paths: list[str] | None = Form(None),
     last_modified: list[int] | None = Form(None),
@@ -68,6 +69,7 @@ async def upload_files(
         raise HTTPException(404, "upload session not found")
     if sess.status != "open":
         raise HTTPException(409, "upload session already committed")
+    quota.check(request)
     staging = config.INCOMING_DIR / str(session_id)
     staging.mkdir(parents=True, exist_ok=True)
     staged = 0
@@ -152,8 +154,9 @@ def upload_session_status(session_id: int, s: Session = Depends(get_session)) ->
 
 
 @router.post("/upload-session/{session_id}/files/init")
-def upload_init(session_id: int, body: UploadInitIn, s: Session = Depends(get_session)) -> dict[str, Any]:
+def upload_init(session_id: int, body: UploadInitIn, request: Request, s: Session = Depends(get_session)) -> dict[str, Any]:
     _open_session(s, session_id)
+    quota.check(request, body.size)
     relp = _safe_relpath(body.rel_path, "file")
     if not images.is_image(relp):
         raise HTTPException(415, f"not an image file: {relp.name}")
@@ -213,6 +216,7 @@ async def upload_chunk(session_id: int, item_id: str, offset: int, request: Requ
                 raise HTTPException(413, "chunk too large")
             f.write(chunk)
     it.received += got
+    quota.added(request, got)
     it.updated_at = now()
     if it.received == it.size:
         dest = config.INCOMING_DIR / str(session_id) / it.rel_path

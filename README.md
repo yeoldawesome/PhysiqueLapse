@@ -42,7 +42,7 @@ Requirements: Python 3.12, Node 20.19+ or 22 LTS (Node 21 works with the pinned 
 
 The same app runs on a home server in Docker (`PL_MODE=server`), so you can use it from your phone and laptop in a browser while the processing runs on the server. Differences from the desktop app:
 
-- **Login required**: one password (argon2-hashed), HTTP-only secure session cookie, rate-limited login. Every `/api` route needs it, photos and thumbnails included.
+- **Accounts**: people join with an invite code you create on the Admin page, sign in with email + password (argon2-hashed, HTTP-only secure session cookie, rate-limited), and reset forgotten passwords by email. **Each account has its own library** (own folder and database), so nobody can see anyone else's photos; per-account storage limits. Every `/api` route needs a session, photos and thumbnails included.
 - **Reachable only on your tailnet**: the container publishes its port on the host's `127.0.0.1` only, and `tailscale serve` adds HTTPS with an automatic `*.ts.net` certificate. Phone cameras need HTTPS. No router ports are opened.
 - **Shares the machine politely**: CPU and memory caps in `docker-compose.yml`, configurable job concurrency, and job threads run at lower priority. All of these are set in `.env`.
 - Models download into the data volume on first start, not into the image.
@@ -50,7 +50,7 @@ The same app runs on a home server in Docker (`PL_MODE=server`), so you can use 
 ```bash
 cp .env.example .env && nano .env
 docker compose up -d --build
-docker compose exec physiquelapse python -m app.auth set-password
+docker compose exec physiquelapse python -m app.accounts create-admin --email you@example.com
 tailscale serve --bg --https=8443 http://127.0.0.1:8420
 ```
 

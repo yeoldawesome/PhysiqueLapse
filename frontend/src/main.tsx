@@ -14,7 +14,9 @@ import Settings from "./pages/Settings";
 import Editor from "./pages/Editor";
 import People from "./pages/People";
 import Guide from "./pages/Guide";
-import Login from "./pages/Login";
+import Login, { Forgot, Reset, Signup } from "./pages/Login";
+import Account, { Privacy } from "./pages/Account";
+import Admin from "./pages/Admin";
 import Capture from "./pages/Capture";
 import { startOutbox } from "./lib/outbox";
 
@@ -26,6 +28,10 @@ const queryClient = new QueryClient({
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
+  { path: "/signup", element: <Signup /> },
+  { path: "/forgot", element: <Forgot /> },
+  { path: "/reset", element: <Reset /> },
+  { path: "/privacy", element: <Privacy /> },
   {
     path: "/",
     element: <App />,
@@ -41,6 +47,8 @@ const router = createBrowserRouter([
       { path: "stats", element: <Stats /> },
       { path: "settings", element: <Settings /> },
       { path: "capture", element: <Capture /> },
+      { path: "account", element: <Account /> },
+      { path: "admin", element: <Admin /> },
     ],
   },
 ]);

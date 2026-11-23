@@ -12,7 +12,7 @@ let redirecting = false;
 
 /** Server mode: the session ended (logged out elsewhere, expired). Go to the login page once. */
 export function redirectToLogin() {
-  if (redirecting || window.location.pathname === "/login") return;
+  if (redirecting || /^\/(login|signup|forgot|reset|privacy)/.test(window.location.pathname)) return;
   redirecting = true;
   const next = window.location.pathname + window.location.search;
   window.location.assign(`/login?next=${encodeURIComponent(next)}`);
