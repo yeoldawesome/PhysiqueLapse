@@ -1,0 +1,51 @@
+# PhysiqueLapse on a home server. Copy .env.example to .env and edit it, then:
+#
+#   docker compose up -d --build
+#   docker compose exec physiquelapse python -m app.auth set-password
+#
+# The port is published on the host's loopback only (127.0.0.1); `tailscale serve` puts HTTPS in
+# front of it for your tailnet. Nothing is reachable from the LAN or the internet.
+# GPU: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build  (later)
+name: physiquelapse
+
+services:
+  physiquelapse:
+    build:
+      context: .
+      target: cpu
+      args:
+        PUID: ${PUID:-1000}
+        PGID: ${PGID:-1000}
+    image: physiquelapse:cpu
+    container_name: physiquelapse
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PL_PORT:-8420}:8420"
+    volumes:
+      - ${PL_DATA_PATH:-/srv/physiquelapse/data}:/data
+    environment:
+      PL_MODE: server
+      TZ: ${TZ:-Etc/UTC}
+      PL_CV_WORKERS: ${PL_CV_WORKERS:-1}
+      PL_THREADS: ${PL_THREADS:-4}
+      PL_JOB_NICE: ${PL_JOB_NICE:-10}
+      PL_SESSION_DAYS: ${PL_SESSION_DAYS:-30}
+      PL_COOKIE_SECURE: ${PL_COOKIE_SECURE:-true}
+      PL_ALLOWED_ORIGINS: ${PL_ALLOWED_ORIGINS:-}
+      OMP_NUM_THREADS: ${PL_THREADS:-4}
+    # don't let heavy jobs starve the other apps on this machine
+    cpus: ${PL_CPUS:-5}
+    mem_limit: ${PL_MEM:-8g}
+    memswap_limit: ${PL_MEM:-8g}
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [pl]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  pl:
+    name: physiquelapse

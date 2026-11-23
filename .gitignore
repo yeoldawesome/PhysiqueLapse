@@ -21,3 +21,5 @@ Thumbs.db
 packaging/build/
 packaging/dist/
 packaging/out/
+# server settings (secrets/paths), see .env.example
+.env
