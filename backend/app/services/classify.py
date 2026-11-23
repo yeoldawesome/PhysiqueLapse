@@ -368,7 +368,8 @@ def job_classify(ctx: JobContext, params: dict) -> dict:
         settings = load_settings(s)
         cats = s.exec(select(PoseCategory)).all()
         cats_by_key = {c.rule_key: c.id for c in cats if c.rule_key}
-        stmt = select(Photo).where(Photo.pose_source != "manual", Photo.landmarks_status.in_(("ok", "none")))
+        # set by hand or captured for a chosen pose: never reclassified
+        stmt = select(Photo).where(Photo.pose_source.not_in(("manual", "capture")), Photo.landmarks_status.in_(("ok", "none")))
         if ids:
             stmt = stmt.where(Photo.id.in_(ids))
         elif not force:

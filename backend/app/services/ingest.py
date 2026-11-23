@@ -243,6 +243,12 @@ def delete_photo(s: Session, photo: Photo, *, remember: bool = True) -> None:
     (config.DERIVED_DIR / "face" / f"{pid}.jpg").unlink(missing_ok=True)
     (config.DERIVED_DIR / "person_face" / f"{pid}.jpg").unlink(missing_ok=True)
     (config.DERIVED_DIR / "fullres" / f"{pid}.jpg").unlink(missing_ok=True)
+    (config.DERIVED_DIR / "ghost_edges" / f"{pid}.png").unlink(missing_ok=True)
+    from ..models import CaptureSeries
+
+    for cs in s.exec(select(CaptureSeries).where(CaptureSeries.reference_photo_id == pid)).all():
+        cs.reference_photo_id = None
+        s.add(cs)
     from ..models import PersonFace
 
     for model in (Alignment, PoseFeatures, PhotoMeasurement, PersonFace):
