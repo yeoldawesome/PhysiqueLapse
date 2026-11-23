@@ -75,6 +75,8 @@ class AppSettings(BaseModel):
     playback_crossfade: bool = True
     # import
     skip_near_duplicates: bool = True
+    # after a browser upload: landmarks -> classify -> align the new photos (None = on in server mode)
+    auto_process_uploads: bool | None = None
 
 
 RESERVED_KEYS = {"schema_version"}

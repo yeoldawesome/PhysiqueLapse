@@ -250,6 +250,31 @@ class JobRunner:
                 s.add(row)
                 s.commit()
         log.info("job %s %s -> %s in %.1fs", job_id, type_, status, time.monotonic() - t0)
+        if status == "done":
+            self._continue_chain(params, result if isinstance(result, dict) else {})
+
+    def _continue_chain(self, params: dict, result: dict) -> None:
+        """A job may carry `chain`: [{"type", "params"}, ...] (jobs to run after it, in order),
+        or return `chain` from its handler. The next one is queued with the rest of the chain."""
+        chain = list(result.get("chain") or params.get("chain") or [])
+        if not chain:
+            return
+        nxt, rest = chain[0], chain[1:]
+        p = dict(nxt.get("params") or {})
+        if rest:
+            p["chain"] = rest
+        try:
+            self.enqueue(nxt["type"], p, dedupe=False)
+        except Exception as e:
+            log.warning("could not queue chained job %s: %s", nxt.get("type"), e)
+
+    def enqueue_chain(self, steps: list[tuple[str, dict]]) -> Job:
+        """Queue steps[0] now; each following step starts when the previous one finished OK."""
+        (t0, p0), rest = steps[0], steps[1:]
+        p = dict(p0)
+        if rest:
+            p["chain"] = [{"type": t, "params": pp} for t, pp in rest]
+        return self.enqueue(t0, p, dedupe=False)
 
 
 def _lower_priority() -> None:

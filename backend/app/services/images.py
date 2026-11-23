@@ -168,3 +168,44 @@ class PhashIndex:
 
     def __len__(self) -> int:
         return len(self._ids)
+
+
+# ----------------------------------------------------------------------------- full-resolution JPEG
+
+
+def fullres_jpeg(photo) -> Path:
+    """A full-resolution JPEG copy of a photo's original (cached in derived/fullres): upright
+    (EXIF rotation applied, Orientation reset to 1), with the original's EXIF dates kept so the
+    file still sorts by when it was taken. Used for HEIC originals, which browsers can't show."""
+    from .. import config
+
+    out = config.DERIVED_DIR / "fullres" / f"{photo.id}.jpg"
+    if out.exists():
+        return out
+    src = config.abs_path(photo.original_path)
+    raw = Image.open(src)
+    try:
+        exif = raw.getexif()
+        upright = ImageOps.exif_transpose(raw)
+        if upright.mode != "RGB":
+            upright = upright.convert("RGB")
+        keep = Image.Exif()
+        for tag in (EXIF_DATETIME, 0x010F, 0x0110):  # DateTime, Make, Model
+            if tag in exif:
+                keep[tag] = exif[tag]
+        keep[EXIF_ORIENTATION] = 1
+        try:
+            ifd = exif.get_ifd(EXIF_IFD)
+            k_ifd = keep.get_ifd(EXIF_IFD)
+            for tag in (EXIF_DATETIME_ORIGINAL, EXIF_DATETIME_DIGITIZED, 0x9010, 0x9011):  # + OffsetTime(Original)
+                if tag in ifd:
+                    k_ifd[tag] = ifd[tag]
+        except Exception:
+            pass
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".jpg.tmp")
+        upright.save(tmp, "JPEG", quality=92, exif=keep.tobytes())
+        replace_retry(tmp, out)
+    finally:
+        raw.close()
+    return out

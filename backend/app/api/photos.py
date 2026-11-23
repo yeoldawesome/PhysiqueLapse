@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -388,8 +389,16 @@ def preview(photo_id: int, s: Session = Depends(get_session)):
 
 
 @router.get("/{photo_id}/original")
-def original(photo_id: int, download: bool = False, s: Session = Depends(get_session)):
+def original(photo_id: int, download: bool = False, as_jpeg: bool = False, s: Session = Depends(get_session)):
+    """The original file, byte-identical. `as_jpeg` (or a HEIC/HEIF original, which most browsers
+    can't show) gives a full-resolution JPEG copy instead, upright, with the EXIF date kept."""
     p = _get_photo(s, photo_id)
+    if as_jpeg or p.ext.lower() in ("heic", "heif"):
+        from ..services.images import fullres_jpeg
+
+        path = fullres_jpeg(p)
+        name = Path(p.original_filename).with_suffix(".jpg").name if download else None
+        return _file(path, "image/jpeg", IMMUTABLE, filename=name)
     return _file(
         config.abs_path(p.original_path),
         MEDIA_TYPES.get(p.ext, "application/octet-stream"),

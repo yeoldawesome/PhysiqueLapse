@@ -242,6 +242,7 @@ def delete_photo(s: Session, photo: Photo, *, remember: bool = True) -> None:
     (config.DERIVED_DIR / "abs" / f"{pid}.jpg").unlink(missing_ok=True)
     (config.DERIVED_DIR / "face" / f"{pid}.jpg").unlink(missing_ok=True)
     (config.DERIVED_DIR / "person_face" / f"{pid}.jpg").unlink(missing_ok=True)
+    (config.DERIVED_DIR / "fullres" / f"{pid}.jpg").unlink(missing_ok=True)
     from ..models import PersonFace
 
     for model in (Alignment, PoseFeatures, PhotoMeasurement, PersonFace):
@@ -316,6 +317,7 @@ def run_ingest_session(ctx: JobContext, session_id: int, *, files: list[tuple[Pa
         total = len(files)
         ctx.progress(0, total, f"Importing {total} files")
         done = 0
+        new_ids: list[int] = []
         try:
             for path, name in files:
                 ctx.check_cancelled()
@@ -326,6 +328,8 @@ def run_ingest_session(ctx: JobContext, session_id: int, *, files: list[tuple[Pa
                     session_id=session_id, settings=settings, index=index, display_name=name, move=move,
                 )
                 _bump(counts, _RESULT_TO_COUNT.get(r.status, "errors"))
+                if r.status == "accepted" and r.photo_id is not None:
+                    new_ids.append(r.photo_id)
                 done += 1
                 sess.counts = dict(counts)
                 s.add(sess)
@@ -353,7 +357,7 @@ def run_ingest_session(ctx: JobContext, session_id: int, *, files: list[tuple[Pa
         if extras:
             msg += " (" + ", ".join(extras) + ")"
         ctx.progress(total, total, msg, force=True)
-        return {"message": msg, "counts": counts, "session_id": session_id}
+        return {"message": msg, "counts": counts, "session_id": session_id, "photo_ids": new_ids}
 
 
 @job("ingest_upload", lane="io", title="Import uploaded files")
@@ -366,7 +370,34 @@ def job_ingest_upload(ctx: JobContext, params: dict) -> dict:
             files.append((p, p.relative_to(staging).as_posix()))
     result = run_ingest_session(ctx, session_id, files=files, source="upload", move=True)
     shutil.rmtree(staging, ignore_errors=True)
+    with ctx.session() as s:
+        from ..models import UploadItem
+
+        for it in s.exec(select(UploadItem).where(UploadItem.session_id == session_id)).all():
+            s.delete(it)
+        s.commit()
+        auto = auto_process_enabled(load_settings(s))
+    ids = result.get("photo_ids") or []
+    if auto and ids:
+        result["chain"] = processing_chain(ids)
+        result["message"] += ". Processing the new photos next"
     return result
+
+
+def auto_process_enabled(settings: AppSettings) -> bool:
+    """Setting 'auto_process_uploads'; unset means on for the server, off for the desktop app."""
+    if settings.auto_process_uploads is None:
+        return config.SERVER
+    return bool(settings.auto_process_uploads)
+
+
+def processing_chain(ids: list[int]) -> list[dict]:
+    """Jobs that take new photos from 'imported' to 'aligned in their pose', in order."""
+    return [
+        {"type": "extract_landmarks", "params": {"ids": ids}},
+        {"type": "classify_poses", "params": {"ids": ids}},
+        {"type": "align_photos", "params": {"ids": ids}},
+    ]
 
 
 @job("ingest_folder", lane="io", title="Import folder")
