@@ -128,12 +128,12 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
 
 export function PageHeader({ title, children, subtitle }: { title: string; subtitle?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-bg/90 px-6 py-3 backdrop-blur">
+    <div className="sticky top-0 z-20 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-bg/90 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur md:px-6">
       <div className="min-w-0">
         <h1 className="text-lg font-semibold leading-tight">{title}</h1>
         {subtitle && <div className="truncate text-xs text-muted">{subtitle}</div>}
       </div>
-      <div className="ml-auto flex items-center gap-2">{children}</div>
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">{children}</div>
     </div>
   );
 }

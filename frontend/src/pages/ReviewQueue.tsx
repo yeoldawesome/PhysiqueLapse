@@ -153,7 +153,7 @@ export default function ReviewQueue() {
           <Undo2 size={14} /> Undo
         </button>
       </PageHeader>
-      <div className="flex flex-col gap-4 p-6">
+      <div className="flex flex-col gap-4 p-3 md:p-6">
         {hist.data && hist.data.total > 0 && (
           <div className="card max-w-xl p-3">
             <ScoreHistogram h={hist.data} />

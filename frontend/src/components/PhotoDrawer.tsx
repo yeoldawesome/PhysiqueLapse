@@ -31,7 +31,7 @@ export default function PhotoDrawer({ photoId, onClose, onAccepted }: { photoId:
   useEffect(() => setNotes(p?.notes ?? ""), [p?.id, p?.notes]);
 
   if (isLoading || !p) {
-    return <aside className="w-[380px] shrink-0 border-l border-border bg-panel p-4 text-sm text-muted">Loading…</aside>;
+    return <aside className="fixed inset-0 z-50 bg-panel p-4 text-sm text-muted md:static md:z-auto md:w-[380px] md:shrink-0 md:border-l md:border-border">Loading…</aside>;
   }
   const busy = patch.isPending;
   const cat = cats.find((c) => c.id === p.pose_category_id);
@@ -39,7 +39,7 @@ export default function PhotoDrawer({ photoId, onClose, onAccepted }: { photoId:
   const lmOk = p.landmarks_status === "ok";
 
   return (
-    <aside className="flex w-[380px] shrink-0 flex-col overflow-y-auto border-l border-border bg-panel">
+    <aside className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-panel pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] md:static md:pt-0 md:z-auto md:w-[380px] md:shrink-0 md:border-l md:border-border">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <span className="truncate text-sm font-medium" title={p.original_filename}>
           {p.original_filename}
@@ -51,7 +51,7 @@ export default function PhotoDrawer({ photoId, onClose, onAccepted }: { photoId:
 
       {/* fixed-height box: any photo shape fits inside (object-contain); the landmark overlay
           uses the same contain fit through its viewBox, so it stays registered */}
-      <div className="checker relative h-[440px] w-full shrink-0 overflow-hidden">
+      <div className="checker relative h-[min(440px,60vh)] w-full shrink-0 overflow-hidden">
         <div className="absolute inset-0 bottom-11">
           <img
             src={p.preview_url}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { ChevronLeft, ChevronRight, Search, UserX, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, SlidersHorizontal, UserX, X } from "lucide-react";
 import { useBulk, useCategories, useDashboard, usePatchPhoto, usePhotos, type PhotoFilters } from "../api/queries";
 import PoseActions from "../components/PoseActions";
 import PoseExamples from "../components/PoseExamples";
@@ -9,6 +9,7 @@ import PhotoDrawer from "../components/PhotoDrawer";
 import BulkBar from "../components/BulkBar";
 import { Empty, PageHeader, Spinner } from "../components/ui";
 import { useShortcuts } from "../lib/keyboard";
+import { useNarrow } from "../lib/media";
 
 const PAGE_SIZE = 120;
 
@@ -26,6 +27,7 @@ export default function Library() {
   // ?photo=<id> opens that photo's drawer (deep link)
   const [open, setOpen] = useState<number | null>(() => (params.get("photo") ? Number(params.get("photo")) : null));
   const [q, setQ] = useState(params.get("q") ?? "");
+  const [showFilters, setShowFilters] = useState(false);
   const [size, setSize] = useState<number>(readSize);
   const { data: cats = [] } = useCategories();
   const { data: dash } = useDashboard();
@@ -151,6 +153,7 @@ export default function Library() {
   );
 
   const anyFilter = [...params.keys()].some((k) => k !== "sort" && k !== "page");
+  const narrow = useNarrow();
   const page = filters.page ?? 1;
   const pages = data?.pages ?? 1;
 
@@ -159,7 +162,7 @@ export default function Library() {
       <div className="flex min-w-0 flex-1 flex-col">
         <PageHeader title={poseTitle ?? "Library"} subtitle={data ? `${data.total} photos${isFetching ? " · refreshing" : ""}` : ""}>
           <Link to="/people" className="btn" title="find photos that aren't of you and remove them">
-            <UserX size={14} /> Filter people
+            <UserX size={14} /> <span className="hidden sm:inline">Filter people</span>
           </Link>
           {poseKey != null && (
             <PoseActions
@@ -171,7 +174,7 @@ export default function Library() {
           )}
           <label className="relative">
             <Search size={14} className="absolute left-2 top-2 text-muted" />
-            <input className="input w-48 pl-7" placeholder="filename or notes" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input className="input w-32 pl-7 sm:w-48" placeholder="filename or notes" value={q} onChange={(e) => setQ(e.target.value)} />
           </label>
           <input
             type="range"
@@ -181,11 +184,14 @@ export default function Library() {
             value={size}
             onChange={(e) => setSize(Number(e.target.value))}
             title="thumbnail size"
-            className="w-24"
+            className="hidden w-24 md:block"
           />
+          <button className={`btn md:hidden ${anyFilter ? "text-accent" : ""}`} onClick={() => setShowFilters((v) => !v)}>
+            <SlidersHorizontal size={14} /> Filters
+          </button>
         </PageHeader>
 
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 py-2 text-xs">
+        <div className={`${showFilters ? "flex" : "hidden"} flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs md:flex md:px-6`}>
           <select className="select" value={params.get("pose_id") ?? ""} onChange={(e) => set("pose_id", e.target.value)}>
             <option value="">all poses</option>
             <option value="none">unassigned</option>
@@ -262,7 +268,7 @@ export default function Library() {
           )}
         </div>
 
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto p-2 md:p-4">
           {reviewing && (
             <PoseExamples
               categories={cats}
@@ -284,7 +290,7 @@ export default function Library() {
                 : "Add photos on the Import page: drag and drop, pick a folder, or point at a folder on this computer."}
             </Empty>
           ) : (
-            <PhotoGrid photos={photos} categories={cats} selected={selected} setSelected={setSelected} onOpen={setOpen} onAccept={setPose} size={size} />
+            <PhotoGrid photos={photos} categories={cats} selected={selected} setSelected={setSelected} onOpen={setOpen} onAccept={setPose} size={narrow ? 104 : size} />
           )}
           {pages > 1 && (
             <div className="mt-4 flex items-center justify-center gap-2 text-sm">

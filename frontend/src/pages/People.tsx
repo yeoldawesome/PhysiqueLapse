@@ -161,7 +161,7 @@ export default function People() {
         </button>
       </PageHeader>
 
-      <div className="flex flex-col gap-4 p-6">
+      <div className="flex flex-col gap-4 p-3 md:p-6">
         {!sm.models && (
           <Empty title="Face models missing">
             Run <code>.venv\Scripts\python backend\scripts\download_models.py</code> once (about 38 MB), then reload.

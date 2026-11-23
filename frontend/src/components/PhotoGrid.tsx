@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import type { Category, Photo } from "../api/types";
 import PhotoCard, { type SelectMode } from "./PhotoCard";
+import { useCoarsePointer } from "../lib/media";
 
 export default function PhotoGrid({
   photos,
@@ -20,6 +21,7 @@ export default function PhotoGrid({
   size?: number;
 }) {
   const anchor = useRef<number | null>(null);
+  const touch = useCoarsePointer();
   const catById = new Map(categories.map((c) => [c.id, c]));
   const refIds = new Set(categories.map((c) => c.reference_photo_id).filter((x): x is number => x != null));
 
@@ -65,6 +67,7 @@ export default function PhotoGrid({
           onSelect={onSelect}
           onOpen={onOpen}
           onAccept={onAccept}
+          selecting={touch && selected.size > 0}
         />
       ))}
     </div>

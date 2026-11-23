@@ -174,10 +174,10 @@ export default function Guide() {
   return (
     <div>
       <PageHeader title="Start here" subtitle="how PhysiqueLapse works and what everything does" />
-      <div className="mx-auto flex max-w-6xl flex-col gap-8 p-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-8 p-3 md:p-6">
         {/* intro */}
         <div className="card overflow-hidden">
-          <div className="flex flex-col gap-3 bg-gradient-to-br from-accent/15 via-transparent to-transparent p-6">
+          <div className="flex flex-col gap-3 bg-gradient-to-br from-accent/15 via-transparent to-transparent p-3 md:p-6">
             <div className="flex items-center gap-2 text-accent">
               <BookOpen size={18} />
               <span className="text-xs font-semibold uppercase tracking-wide">Welcome</span>

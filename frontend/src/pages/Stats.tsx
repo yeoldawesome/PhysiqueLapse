@@ -248,11 +248,11 @@ export default function Stats() {
         )}
       </PageHeader>
       {tab === "photos" ? (
-        <div className="max-w-6xl p-6">
+        <div className="max-w-6xl p-3 md:p-6">
           <PhotoMeasurements />
         </div>
       ) : (
-      <div className="flex max-w-5xl flex-col gap-4 p-6">
+      <div className="flex max-w-5xl flex-col gap-4 p-3 md:p-6">
         <div className="flex flex-wrap items-center gap-1 border-b border-border">
           {metrics.data!.map((m) => (
             <button

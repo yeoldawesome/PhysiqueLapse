@@ -277,7 +277,7 @@ export default function SnapchatImport() {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted">or, faster for big downloads, read them where they are:</span>
             <input
-              className="input min-w-[260px] flex-1 font-mono text-xs"
+              className="input w-full min-w-0 flex-1 font-mono text-xs md:min-w-[260px]"
               placeholder="C:\Users\you\Downloads  (folder with the zips, or one .zip)"
               value={path}
               onChange={(e) => setPath(e.target.value)}

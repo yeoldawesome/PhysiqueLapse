@@ -233,7 +233,7 @@ export default function Editor() {
     return (
       <div>
         <PageHeader title="Alignment editor" />
-        <div className="p-6">
+        <div className="p-3 md:p-6">
           <Empty title="Cannot edit this photo's alignment">{(ctxQ.error as Error).message}</Empty>
         </div>
       </div>
@@ -283,7 +283,7 @@ export default function Editor() {
           <Save size={14} /> Save
         </button>
       </PageHeader>
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <div className="checker relative flex min-w-0 flex-1 items-center justify-center overflow-hidden" onWheel={onWheel}>
           <div
             ref={stageRef}
@@ -350,7 +350,7 @@ export default function Editor() {
             )}
           </div>
         </div>
-        <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-panel p-4 text-sm">
+        <aside className="flex max-h-[45%] w-full shrink-0 flex-col gap-4 overflow-y-auto border-t border-border bg-panel p-4 text-sm md:max-h-none md:w-72 md:border-l md:border-t-0">
           <div className="flex flex-col gap-2">
             <Toggle checked={ghost} onChange={setGhost} label="Reference ghost (G)" />
             <input type="range" min={0} max={1} step={0.05} value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} disabled={!ghost} />

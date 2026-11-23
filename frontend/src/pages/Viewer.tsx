@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronFirst, ChevronLast, Columns2, Crosshair, Film, Layers, Shirt, Pause, Pencil, Play, Square, StepBack, StepForward } from "lucide-react";
+import { ChevronFirst, ChevronLast, Columns2, Crosshair, Film, Layers, Shirt, Pause, Pencil, Play, SlidersHorizontal, Square, StepBack, StepForward } from "lucide-react";
 import { get, post } from "../api/client";
 import { useCategories, useDashboard, useRunJob, useSettings } from "../api/queries";
 import type { Metric, MetricEntry, Sequence, SequenceFrame } from "../api/types";
@@ -155,6 +155,8 @@ export default function Viewer() {
   const [exportOpen, setExportOpen] = useState(() => new URLSearchParams(window.location.search).get("export") === "1"); // ?export=1 opens the export window
   const [metricId, setMetricId] = useState<number | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const [panel, setPanel] = useState(false); // phone: the side panel opens below the photo
+  const swipe = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (settings) {
@@ -279,10 +281,13 @@ export default function Viewer() {
               : "hide photos where a sleeve or other clothing covers the arm"
           }
         >
-          <Shirt size={14} /> {hideSleeves ? `Sleeves hidden (${sleeveCount})` : "Hide sleeves"}
+          <Shirt size={14} /> <span className="hidden sm:inline">{hideSleeves ? `Sleeves hidden (${sleeveCount})` : "Hide sleeves"}</span>
         </button>
-        <input type="date" className="input" value={from} onChange={(e) => set("from", e.target.value)} title="from" />
-        <input type="date" className="input" value={to} onChange={(e) => set("to", e.target.value)} title="to" />
+        <input type="date" className="input hidden md:block" value={from} onChange={(e) => set("from", e.target.value)} title="from" />
+        <input type="date" className="input hidden md:block" value={to} onChange={(e) => set("to", e.target.value)} title="to" />
+        <button className={`btn md:hidden ${panel ? "btn-primary" : ""}`} onClick={() => setPanel((v) => !v)} title="modes, playback, measurements">
+          <SlidersHorizontal size={14} />
+        </button>
         {!isAbs && seq.data && seq.data.unaligned > 0 && (
           <button className="btn" onClick={() => run.mutate({ path: `/poses/${poseId}/align` })}>
             <Crosshair size={14} /> Align
@@ -298,7 +303,7 @@ export default function Viewer() {
           <Spinner /> loading…
         </div>
       ) : frames.length === 0 ? (
-        <div className="p-6">
+        <div className="p-3 md:p-6">
           {group === "face" ? (
             <Empty title="No face close-ups yet">
               Photos are checked for a visible face automatically when poses are classified. You can also add photos by hand with the "Face visible" switch in the Library photo drawer.
@@ -312,9 +317,25 @@ export default function Viewer() {
           )}
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1">
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="checker flex min-h-0 flex-1 items-center justify-center p-3">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-visible">
+          <div className="flex min-h-[60%] min-w-0 flex-1 flex-col md:min-h-0">
+            <div
+              className="checker flex min-h-0 flex-1 touch-pan-y items-center justify-center p-1 md:p-3"
+              onPointerDown={(e) => {
+                if (e.pointerType === "touch" && mode !== "split") swipe.current = { x: e.clientX, y: e.clientY };
+              }}
+              onPointerUp={(e) => {
+                const s = swipe.current;
+                swipe.current = null;
+                if (!s) return;
+                const dx = e.clientX - s.x;
+                if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(e.clientY - s.y)) {
+                  setPlaying(false);
+                  step(dx < 0 ? 1 : -1); // swipe left = next photo
+                }
+              }}
+              onPointerCancel={() => (swipe.current = null)}
+            >
               <div
                 ref={stageRef}
                 className="relative h-full max-h-full overflow-hidden bg-[#18181b] shadow-2xl"
@@ -368,9 +389,13 @@ export default function Viewer() {
             </div>
 
             {/* transport */}
-            <div className="border-t border-border bg-panel px-4 py-2">
-              <div className="flex items-center gap-2">
-                <button className="btn btn-sm" onClick={() => setIndex(0)} title="first (Home)">
+            <div className="border-t border-border bg-panel px-2 py-2 md:px-4">
+              <div className="mb-1 text-center text-sm tabular-nums md:hidden">
+                <span className="font-medium">{fmtDate(cur?.taken_at)}</span>
+                <span className="text-muted"> · day {cur?.days_since_start ?? "–"} · {index + 1}/{frames.length}</span>
+              </div>
+              <div className="flex items-center gap-1 md:gap-2">
+                <button className="btn btn-sm hidden sm:inline-flex" onClick={() => setIndex(0)} title="first (Home)">
                   <ChevronFirst size={14} />
                 </button>
                 <button className="btn btn-sm" onClick={() => step(-1)} title="previous (←)">
@@ -382,12 +407,12 @@ export default function Viewer() {
                 <button className="btn btn-sm" onClick={() => step(1)} title="next (→)">
                   <StepForward size={14} />
                 </button>
-                <button className="btn btn-sm" onClick={() => setIndex(frames.length - 1)} title="last (End)">
+                <button className="btn btn-sm hidden sm:inline-flex" onClick={() => setIndex(frames.length - 1)} title="last (End)">
                   <ChevronLast size={14} />
                 </button>
                 <input
                   type="range"
-                  className="mx-2 flex-1"
+                  className="mx-1 h-8 min-w-0 flex-1 md:mx-2"
                   min={0}
                   max={frames.length - 1}
                   value={index}
@@ -396,7 +421,7 @@ export default function Viewer() {
                     setIndex(Number(e.target.value));
                   }}
                 />
-                <div className="w-64 shrink-0 text-right text-sm tabular-nums">
+                <div className="hidden w-64 shrink-0 text-right text-sm tabular-nums md:block">
                   <span className="font-medium">{fmtDate(cur?.taken_at)}</span>
                   <span className="text-muted"> · day {cur?.days_since_start ?? "–"} · {index + 1}/{frames.length}</span>
                 </div>
@@ -428,7 +453,7 @@ export default function Viewer() {
           </div>
 
           {/* side panel */}
-          <aside className="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-panel p-4 text-sm">
+          <aside className={`${panel ? "flex" : "hidden"} w-full shrink-0 flex-col gap-4 border-t border-border bg-panel p-4 text-sm md:flex md:w-80 md:overflow-y-auto md:border-l md:border-t-0`}>
             <div>
               <div className="label mb-1.5">Mode</div>
               <div className="flex gap-1">

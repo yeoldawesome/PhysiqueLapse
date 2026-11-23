@@ -70,7 +70,7 @@ export default function JobDrawer() {
   if (shown.length === 0) return null;
 
   return (
-    <div className="fixed bottom-3 right-3 z-40 w-80 overflow-hidden rounded-lg border border-border bg-panel shadow-2xl">
+    <div className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom))] left-3 right-3 z-40 overflow-hidden md:bottom-3 md:left-auto md:w-80 rounded-lg border border-border bg-panel shadow-2xl">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs">
         <span className="font-medium">
           {active.length > 0 ? `${active.length} job${active.length > 1 ? "s" : ""} running` : "Recent jobs"}

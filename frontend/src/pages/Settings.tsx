@@ -117,7 +117,7 @@ export default function Settings() {
           Save
         </button>
       </PageHeader>
-      <div className="flex max-w-6xl flex-col gap-6 p-6">
+      <div className="flex max-w-6xl flex-col gap-6 p-3 md:p-6">
         <PoseTeaching />
 
         <section className="card p-4">
@@ -145,7 +145,7 @@ export default function Settings() {
           </div>
           <div className="mt-3 flex gap-2">
             <input
-              className="input w-64"
+              className="input w-full md:w-64"
               placeholder="new category, e.g. Most Muscular"
               value={newCat}
               onChange={(e) => setNewCat(e.target.value)}

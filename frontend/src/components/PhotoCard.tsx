@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 import { AlertTriangle, Check, EyeOff, FlipHorizontal2, Star } from "lucide-react";
 import type { Category, Photo } from "../api/types";
 import { DATE_SOURCE_LABEL, fmtDate } from "../lib/format";
@@ -13,6 +13,7 @@ function PhotoCardInner({
   onSelect,
   onOpen,
   onAccept,
+  selecting,
 }: {
   photo: Photo;
   category?: Category;
@@ -21,7 +22,14 @@ function PhotoCardInner({
   onSelect: (id: number, mode: SelectMode) => void;
   onOpen: (id: number) => void;
   onAccept?: (id: number, poseId: number) => void;
+  /** touch: something is selected, so a tap adds/removes instead of opening */
+  selecting?: boolean;
 }) {
+  // touch: long-press selects (there is no Ctrl/Shift on a phone)
+  const press = useRef<{ t: number; x: number; y: number; fired: boolean } | null>(null);
+  const cancelPress = () => {
+    if (press.current) window.clearTimeout(press.current.t);
+  };
   const lowDate = photo.taken_at_confidence === "low" || !photo.taken_at;
   const lmBad = photo.landmarks_status === "none" || photo.landmarks_status === "failed";
   const flags = photo.alignment?.flags ? Object.keys(photo.alignment.flags).filter((k) => photo.alignment!.flags[k]) : [];
@@ -31,8 +39,32 @@ function PhotoCardInner({
       className={`group relative cursor-pointer select-none overflow-hidden rounded-md border bg-panel transition-shadow ${
         selected ? "border-accent ring-2 ring-accent/50" : "border-border hover:border-muted/60"
       } ${photo.excluded ? "opacity-50" : ""}`}
+      onPointerDown={(e) => {
+        if (e.pointerType !== "touch") return;
+        cancelPress();
+        const t = window.setTimeout(() => {
+          if (press.current) press.current.fired = true;
+          navigator.vibrate?.(15);
+          onSelect(photo.id, "toggle");
+        }, 450);
+        press.current = { t, x: e.clientX, y: e.clientY, fired: false };
+      }}
+      onPointerMove={(e) => {
+        const p = press.current;
+        if (p && !p.fired && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 10) cancelPress();
+      }}
+      onPointerUp={cancelPress}
+      onPointerCancel={cancelPress}
+      onContextMenu={(e) => {
+        if (press.current) e.preventDefault(); // no "save image" menu on long-press
+      }}
       onClick={(e) => {
-        if (e.shiftKey) onSelect(photo.id, "range");
+        if (press.current?.fired) {
+          press.current = null;
+          return;
+        }
+        if (selecting) onSelect(photo.id, "toggle");
+        else if (e.shiftKey) onSelect(photo.id, "range");
         else if (e.ctrlKey || e.metaKey) onSelect(photo.id, "toggle");
         else {
           onSelect(photo.id, "single");
@@ -48,7 +80,7 @@ function PhotoCardInner({
           loading="lazy"
           decoding="async"
           alt=""
-          className="h-full w-full object-cover"
+          className="h-full w-full object-cover [-webkit-touch-callout:none]"
           style={photo.flip_horizontal ? { transform: "scaleX(-1)" } : undefined}
           draggable={false}
         />

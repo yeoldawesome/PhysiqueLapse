@@ -117,7 +117,7 @@ export default function Dashboard() {
           <Crosshair size={14} /> Align all
         </button>
       </PageHeader>
-      <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-6 p-3 md:p-6">
         {c.photos === 0 ? (
           <Empty title="No photos yet">
             Start on the{" "}

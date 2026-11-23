@@ -103,7 +103,7 @@ export default function Import() {
   return (
     <div>
       <PageHeader title="Import" subtitle="Originals are copied into the app's data folder. Your source files are never changed." />
-      <div className="flex max-w-5xl flex-col gap-4 p-6">
+      <div className="flex max-w-5xl flex-col gap-4 p-3 md:p-6">
         <Uploader />
 
         {pathImport && (
@@ -115,7 +115,7 @@ export default function Import() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input
-              className="input min-w-[320px] flex-1 font-mono text-xs"
+              className="input w-full min-w-0 flex-1 font-mono text-xs md:min-w-[320px]"
               placeholder="C:\Users\you\Pictures\Progress"
               value={path}
               onChange={(e) => setPath(e.target.value)}
@@ -141,6 +141,7 @@ export default function Import() {
           {sessions.length === 0 ? (
             <div className="px-4 py-6 text-sm text-muted">No imports yet.</div>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted">
                 <tr>
@@ -184,6 +185,7 @@ export default function Import() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>
