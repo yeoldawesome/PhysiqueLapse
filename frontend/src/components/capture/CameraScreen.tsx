@@ -56,6 +56,15 @@ export default function CameraScreen({ series, onExit, extra }: { series: Captur
   const [shot, setShot] = useState<Shot | null>(null);
   const [compare, setCompare] = useState(false);
   const outbox = useOutbox();
+  // a capture reached the server: refresh the streak, last photo and the "last" ghost
+  useEffect(() => {
+    const on = () => {
+      qc.invalidateQueries({ queryKey: ["capture"] });
+      qc.invalidateQueries({ queryKey: ["photos"] });
+    };
+    window.addEventListener("pl:uploaded", on);
+    return () => window.removeEventListener("pl:uploaded", on);
+  }, [qc]);
   const pending = outbox.filter((i) => !i.uploaded).length;
 
   // settings change: show at once, save in the background (per series = per pose)

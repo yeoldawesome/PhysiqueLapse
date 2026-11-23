@@ -140,7 +140,9 @@ export function flush(): Promise<void> {
     for (const it of [...memory.values()]) {
       if (it.uploaded || it.error) continue;
       try {
-        await settle(await uploadOne(it));
+        const done = await uploadOne(it);
+        await settle(done);
+        if (done.uploaded) window.dispatchEvent(new CustomEvent("pl:uploaded", { detail: done.photoId }));
       } catch {
         break; // offline or server down: try again on the next trigger
       }

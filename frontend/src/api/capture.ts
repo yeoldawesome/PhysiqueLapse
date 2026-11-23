@@ -19,6 +19,7 @@ export interface CaptureSeries {
   auto_capture: boolean;
   archived: boolean;
   photo_count: number;
+  streak?: { taken_today: boolean; streak: number; days: { date: string; photo_id: number | null; thumb_url: string | null }[] };
   last_taken_at: string | null;
   last_thumb_url: string | null;
 }

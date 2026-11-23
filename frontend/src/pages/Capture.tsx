@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Camera, CloudUpload, Download, Plus, Trash2 } from "lucide-react";
+import { Camera, Check, CloudUpload, Download, Flame, Play, Plus, Trash2 } from "lucide-react";
+import { Link } from "react-router";
 import { get } from "../api/client";
-import { createDailySeries, openPoseSeries, useCaptureListing, useSeries } from "../api/capture";
+import { createDailySeries, openPoseSeries, useCaptureListing, useSeries, type CaptureSeries } from "../api/capture";
 import type { Page, Photo } from "../api/types";
 import CameraScreen from "../components/capture/CameraScreen";
 import { getSaveToRoll, saveToCameraRoll, setSaveToRoll } from "../components/capture/camera";
@@ -106,6 +107,33 @@ function OutboxStatus() {
   );
 }
 
+/** On the camera screen of a daily series: streak and the last 7 days. */
+function Filmstrip({ s }: { s: CaptureSeries }) {
+  if (!s.streak) return null;
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <div className="flex w-14 shrink-0 flex-col text-white/70">
+        <span className="flex items-center gap-0.5 text-warn">
+          <Flame size={12} /> {s.streak.streak}
+        </span>
+        {s.streak.taken_today ? <span className="text-ok">today ✓</span> : <span>today</span>}
+      </div>
+      <div className="flex flex-1 gap-1">
+        {s.streak.days.map((d) => (
+          <div key={d.date} className="aspect-[4/5] flex-1 overflow-hidden rounded bg-white/10" title={d.date}>
+            {d.thumb_url && <img src={d.thumb_url} alt="" className="h-full w-full object-cover" />}
+          </div>
+        ))}
+      </div>
+      {s.photo_count > 1 && (
+        <Link to={`/viewer?pose_id=series:${s.id}&autoplay=1`} className="rounded-md bg-white/10 p-2" title="play as a flipbook">
+          <Play size={16} />
+        </Link>
+      )}
+    </div>
+  );
+}
+
 export default function Capture() {
   const [params, setParams] = useSearchParams();
   const nav = useNavigate();
@@ -119,7 +147,8 @@ export default function Capture() {
 
   if (sid != null) {
     if (series.isLoading) return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black text-white"><Spinner /></div>;
-    if (series.data) return <CameraScreen series={series.data} onExit={() => nav("/capture")} />;
+    if (series.data)
+      return <CameraScreen series={series.data} onExit={() => nav("/capture")} extra={series.data.mode === "daily" ? <Filmstrip s={series.data} /> : undefined} />;
   }
 
   const open = async (poseId: number) => {
@@ -148,17 +177,37 @@ export default function Capture() {
           <p className="mb-3 text-sm text-muted">One photo a day; the ghost is yesterday's photo, so each day lines up with the last.</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
             {(listing.data?.daily ?? []).map((d) => (
-              <button key={d.id} className="card overflow-hidden text-left" onClick={() => setParams({ series: String(d.id) })}>
-                <div className="aspect-[4/5] bg-bg">
+              <div key={d.id} className="card overflow-hidden">
+                <button className="relative block aspect-[4/5] w-full bg-bg" onClick={() => setParams({ series: String(d.id) })} title="take today's photo">
                   {d.last_thumb_url ? <img src={d.last_thumb_url} alt="" className="h-full w-full object-cover" /> : <Camera className="m-auto mt-10 text-muted" />}
-                </div>
-                <div className="p-2">
-                  <div className="truncate text-sm font-medium">{d.name}</div>
-                  <div className="text-xs text-muted">
-                    {d.photo_count} photos{d.last_taken_at ? ` · ${fmtDate(d.last_taken_at)}` : ""}
+                  {d.streak?.taken_today ? (
+                    <span className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded bg-ok/90 px-1.5 py-0.5 text-[11px] font-medium text-black">
+                      <Check size={12} /> today
+                    </span>
+                  ) : (
+                    <span className="absolute left-1.5 top-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[11px]">not yet today</span>
+                  )}
+                </button>
+                <div className="flex items-center gap-1 p-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{d.name}</div>
+                    <div className="flex items-center gap-1 text-xs text-muted">
+                      {d.streak && d.streak.streak > 0 && (
+                        <span className="flex items-center text-warn" title="days in a row">
+                          <Flame size={12} />
+                          {d.streak.streak}
+                        </span>
+                      )}
+                      {d.photo_count} photos{d.last_taken_at ? ` · ${fmtDate(d.last_taken_at)}` : ""}
+                    </div>
                   </div>
+                  {d.photo_count > 1 && (
+                    <Link to={`/viewer?pose_id=series:${d.id}&autoplay=1`} className="btn btn-sm" title="play as a flipbook">
+                      <Play size={14} />
+                    </Link>
+                  )}
                 </div>
-              </button>
+              </div>
             ))}
             <form
               className="card flex flex-col justify-center gap-2 p-3"
