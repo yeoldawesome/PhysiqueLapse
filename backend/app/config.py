@@ -81,6 +81,25 @@ JOB_NICE = _env_int("PL_JOB_NICE", 10 if SERVER else 0)
 THREADS = _env_int("PL_THREADS", 0)  # 0 = automatic (as before)
 
 
+# uploads from the browser
+MAX_UPLOAD_MB = max(1, _env_int("PL_MAX_UPLOAD_MB", 300))  # per file
+UPLOAD_CHUNK_MB = 8
+# Server mode: server folders that "import from a folder path" (and the Snapchat folder scan)
+# may read. Empty = path imports are off; browser upload is the way in.
+IMPORT_ROOTS = [Path(p).expanduser().resolve() for p in (os.environ.get("PL_IMPORT_ROOTS") or "").split(os.pathsep) if p.strip()]
+
+
+def path_import_allowed(path: Path) -> bool:
+    """Desktop: any folder on this computer. Server: only inside PL_IMPORT_ROOTS."""
+    if not SERVER:
+        return True
+    try:
+        p = Path(path).expanduser().resolve()
+    except OSError:
+        return False
+    return any(p == r or p.is_relative_to(r) for r in IMPORT_ROOTS)
+
+
 def cpu_threads(reserve: int = 2) -> int:
     """Threads a model library may use."""
     if THREADS > 0:

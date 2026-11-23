@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
@@ -36,7 +37,8 @@ def test_media_routes_need_login(server_client):
 
 def test_login_logout_flow(server_client):
     c = server_client
-    assert c.get("/api/auth/status").json() == {"mode": "server", "auth_required": True, "password_set": True, "logged_in": False}
+    st = c.get("/api/auth/status").json()
+    assert {k: st[k] for k in ("mode", "auth_required", "password_set", "logged_in")} == {"mode": "server", "auth_required": True, "password_set": True, "logged_in": False}
     assert c.get("/api/dashboard").status_code == 401
     r = c.post("/api/auth/login", json={"password": TEST_PASSWORD})
     assert r.status_code == 200
@@ -204,6 +206,6 @@ def test_migration_from_v8_adds_auth_tables_and_backs_up(tmp_path):
     version = con.execute("SELECT value FROM settings WHERE key='schema_version'").fetchone()[0]
     con.close()
     assert {"auth_state", "auth_sessions"} <= tables
-    assert '"v": 9' in version or '"v":9' in version
-    assert (d / "physiquelapse.before-v9.db").exists()
+    assert json.loads(version)["v"] == db.SCHEMA_VERSION
+    assert (d / f"physiquelapse.before-v{db.SCHEMA_VERSION}.db").exists()
     db.reset_engine_for_tests(d)

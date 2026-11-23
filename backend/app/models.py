@@ -265,6 +265,23 @@ class Export(SQLModel, table=True):
     created_at: NaiveDatetime = Field(default_factory=now)
 
 
+class UploadItem(SQLModel, table=True):
+    """One file of a resumable (chunked) browser upload. Bytes collect in
+    INCOMING_DIR/<session>/.parts/<id> and move into the session's staging tree when complete."""
+
+    __tablename__ = "upload_items"
+
+    id: str = Field(primary_key=True)  # random hex
+    session_id: int = Field(foreign_key="import_sessions.id", index=True)
+    rel_path: str  # sanitized relative path inside the staging folder
+    size: int
+    received: int = 0
+    last_modified_ms: int = 0
+    status: str = "open"  # open|complete
+    created_at: NaiveDatetime = Field(default_factory=now)
+    updated_at: NaiveDatetime = Field(default_factory=now)
+
+
 class AuthState(SQLModel, table=True):
     """Server mode login: the single user's password hash (argon2). One row, id=1.
     Kept out of `settings` so the settings API can never return it."""

@@ -56,7 +56,7 @@ def _login(c) -> None:
 
 
 @pytest.fixture()
-def client(data_dir):
+def client(data_dir, tmp_path, monkeypatch):
     """API client. With PL_MODE=server (CI runs the suite in both modes) it logs in first, so
     every existing test also runs behind the login."""
     from fastapi.testclient import TestClient
@@ -71,6 +71,8 @@ def client(data_dir):
     with TestClient(app, base_url="https://testserver") as c:
         if config.SERVER:
             _login(c)
+            # path imports are limited to PL_IMPORT_ROOTS in server mode: allow the test's folder
+            monkeypatch.setattr(config, "IMPORT_ROOTS", [tmp_path.resolve()])
         yield c
     jobs._runner = None
 

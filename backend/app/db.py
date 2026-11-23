@@ -14,7 +14,7 @@ from .models import Metric, PoseCategory, Setting
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 _engine = None
 
@@ -118,6 +118,8 @@ _MIGRATIONS: dict[int, list[str]] = {
     ],
     # 9: server mode login (tables auth_state, auth_sessions: new tables, made by create_all)
     9: [],
+    # 10: resumable browser uploads (table upload_items, made by create_all)
+    10: [],
 }
 
 

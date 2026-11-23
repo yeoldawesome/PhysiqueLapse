@@ -27,6 +27,8 @@ def status(request: Request, s: Session = Depends(get_session)) -> dict[str, Any
         "auth_required": required,
         "password_set": auth.password_is_set(s) if required else True,
         "logged_in": (not required) or auth.check_session(s, request.cookies.get(auth.COOKIE_NAME)),
+        # server mode: importing from server folders only when PL_IMPORT_ROOTS is set
+        "path_import": (not config.SERVER) or bool(config.IMPORT_ROOTS),
     }
 
 

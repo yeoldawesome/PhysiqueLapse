@@ -44,13 +44,16 @@ def test_upload_flow_with_folder_paths_and_dates(client):
     }
     r = client.post(f"/api/imports/upload-session/{sess['id']}/files", files=files, data=data)
     assert r.status_code == 200, r.text
-    assert r.json()["staged"] == 5
+    from app import config
+
+    # the server refuses non-images up front; the desktop app stages them and ingest skips them
+    assert r.json()["staged"] == (4 if config.SERVER else 5)
     r = client.post(f"/api/imports/upload-session/{sess['id']}/commit")
     assert r.status_code == 200, r.text
     job = wait_job(client, r.json()["job"]["id"])
     assert job["status"] == "done", job
     counts = job["result"]["counts"]
-    assert counts["accepted"] == 3 and counts["duplicates"] == 1 and counts["videos_skipped"] == 1
+    assert counts["accepted"] == 3 and counts["duplicates"] == 1 and counts.get("videos_skipped", 0) == (0 if config.SERVER else 1)
 
     lib = client.get("/api/photos").json()
     assert lib["total"] == 3
