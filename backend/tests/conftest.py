@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import io
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 from PIL import Image
+
+os.environ["PL_AUTO_DOWNLOAD_MODELS"] = "0"  # server-mode startup must not fetch models in tests
 
 BACKEND = Path(__file__).resolve().parents[1]
 if str(BACKEND) not in sys.path:
@@ -37,16 +40,59 @@ def session(data_dir):
         yield s
 
 
+TEST_PASSWORD = "correct horse battery"
+
+
+def _login(c) -> None:
+    from sqlmodel import Session
+
+    from app import auth
+    from app.db import engine
+
+    with Session(engine()) as s:
+        auth.set_password(s, TEST_PASSWORD)
+    r = c.post("/api/auth/login", json={"password": TEST_PASSWORD})
+    assert r.status_code == 200, r.text
+
+
 @pytest.fixture()
 def client(data_dir):
+    """API client. With PL_MODE=server (CI runs the suite in both modes) it logs in first, so
+    every existing test also runs behind the login."""
     from fastapi.testclient import TestClient
 
-    from app import jobs
+    from app import auth, config, jobs
     from app.main import create_app
 
     jobs._runner = None
+    auth.limiter.reset()
     app = create_app()
-    with TestClient(app) as c:
+    # https: the session cookie is Secure
+    with TestClient(app, base_url="https://testserver") as c:
+        if config.SERVER:
+            _login(c)
+        yield c
+    jobs._runner = None
+
+
+@pytest.fixture()
+def server_client(data_dir, monkeypatch):
+    """A client in server mode, NOT logged in (password set to TEST_PASSWORD)."""
+    from fastapi.testclient import TestClient
+    from sqlmodel import Session
+
+    from app import auth, config, jobs
+    from app.db import engine
+    from app.main import create_app
+
+    monkeypatch.setattr(config, "SERVER", True)
+    monkeypatch.setattr(config, "MODE", "server")
+    jobs._runner = None
+    auth.limiter.reset()
+    with Session(engine()) as s:
+        auth.set_password(s, TEST_PASSWORD)
+    app = create_app()
+    with TestClient(app, base_url="https://testserver") as c:
         yield c
     jobs._runner = None
 

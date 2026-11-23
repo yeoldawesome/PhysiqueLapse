@@ -1,8 +1,9 @@
-import { NavLink, Outlet } from "react-router";
-import { Activity, BookOpen, Images, LayoutDashboard, ListChecks, Play, Settings as SettingsIcon, Upload, UserX } from "lucide-react";
+import { Navigate, NavLink, Outlet } from "react-router";
+import { Activity, BookOpen, Images, LayoutDashboard, ListChecks, LogOut, Play, Settings as SettingsIcon, Upload, UserX } from "lucide-react";
 import JobDrawer from "./components/JobDrawer";
 import Toasts from "./components/Toasts";
 import { useDashboard } from "./api/queries";
+import { useAuthStatus, useLogout } from "./api/auth";
 
 const NAV = [
   { to: "/guide", label: "Start here", icon: BookOpen },
@@ -17,7 +18,16 @@ const NAV = [
 ];
 
 export default function App() {
+  const auth = useAuthStatus();
+  if (auth.data?.auth_required && !auth.data.logged_in) {
+    return <Navigate to={`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`} replace />;
+  }
+  return <Shell server={auth.data?.mode === "server"} />;
+}
+
+function Shell({ server }: { server: boolean }) {
   const dash = useDashboard();
+  const logout = useLogout();
   const review = dash.data?.counts.review_queue ?? 0;
   const needsReview = dash.data?.counts.needs_review ?? 0;
   const notMe = dash.data?.people?.not_me ?? 0;
@@ -28,7 +38,7 @@ export default function App() {
           <div className="h-7 w-7 rounded-md bg-gradient-to-br from-accent to-[#a78bfa]" />
           <div>
             <div className="text-sm font-semibold leading-tight">PhysiqueLapse</div>
-            <div className="text-[11px] text-muted">local · private</div>
+            <div className="text-[11px] text-muted">{server ? "home server · private" : "local · private"}</div>
           </div>
         </div>
         <nav className="flex flex-col gap-0.5 px-2">
@@ -59,8 +69,13 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
-        <div className="mt-auto px-4 py-3 text-[11px] text-muted">
-          {dash.data ? `${dash.data.counts.photos} photos` : "…"}
+        <div className="mt-auto flex items-center justify-between px-4 py-3 text-[11px] text-muted">
+          <span>{dash.data ? `${dash.data.counts.photos} photos` : "…"}</span>
+          {server && (
+            <button className="flex items-center gap-1 hover:text-text" onClick={logout} title="Log out">
+              <LogOut size={12} /> Log out
+            </button>
+          )}
         </div>
       </aside>
       <main className="relative min-w-0 flex-1 overflow-auto">

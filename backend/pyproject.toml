@@ -34,6 +34,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]
 rembg = ["rembg>=2.0.60", "onnxruntime>=1.18"]
+# server mode (PL_MODE=server, Docker image): password hashing for the login
+server = ["argon2-cffi>=23.1"]
 # desktop app: native window (Windows WebView2) + the bundler that builds the .exe
 desktop = ["pywebview>=5.3", "pyinstaller>=6.10"]
 

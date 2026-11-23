@@ -42,7 +42,27 @@ async def lifespan(app: FastAPI):
     init_db()
     _register_job_handlers()
     runner().start()
-    log.info("data dir: %s", config.DATA_DIR)
+    log.info("mode: %s, data dir: %s", config.MODE, config.DATA_DIR)
+    if config.SERVER:
+        from sqlmodel import Session
+
+        from .auth import password_is_set
+        from .db import engine
+
+        with Session(engine()) as s:
+            if not password_is_set(s):
+                log.warning("no login password set. Run: docker compose exec physiquelapse python -m app.auth set-password")
+            # first start of a new volume: fetch the models into DATA_DIR/models (one time;
+            # progress shows in the job panel). The desktop app does the same from desktop.py.
+            try:
+                from .services import model_files
+                from .settings import load_settings
+
+                variant = load_settings(s).pose_model
+                if config._env_bool("PL_AUTO_DOWNLOAD_MODELS", True) and model_files.missing(variant):
+                    runner().enqueue("download_models", {"pose_variant": variant})
+            except Exception as e:
+                log.warning("model check failed: %s", e)
     try:
         yield
     finally:
@@ -53,8 +73,12 @@ def create_app() -> FastAPI:
     app = FastAPI(title="PhysiqueLapse", version="0.1.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json")
 
     from .api import api
+    from .auth import AuthMiddleware, SecurityHeadersMiddleware
 
     app.include_router(api)
+    # both are no-ops in desktop mode (checked per request)
+    app.add_middleware(AuthMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception):
@@ -98,7 +122,12 @@ app = create_app()
 def main() -> None:
     import uvicorn
 
-    uvicorn.run("app.main:app", host=config.HOST, port=config.PORT, reload=False, log_level="info")
+    kw = {}
+    if config.SERVER:
+        # behind tailscale serve (and Docker's port forward): trust X-Forwarded-* for the
+        # client address and scheme. Safe because the port is published on host loopback only.
+        kw = {"proxy_headers": True, "forwarded_allow_ips": config.TRUSTED_PROXIES, "workers": 1}
+    uvicorn.run("app.main:app", host=config.HOST, port=config.PORT, reload=False, log_level="info", **kw)
 
 
 if __name__ == "__main__":

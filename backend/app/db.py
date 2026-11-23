@@ -14,7 +14,7 @@ from .models import Metric, PoseCategory, Setting
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 _engine = None
 
@@ -116,6 +116,8 @@ _MIGRATIONS: dict[int, list[str]] = {
         "ALTER TABLE photos ADD COLUMN person_score FLOAT",
         "CREATE INDEX IF NOT EXISTS ix_photos_person_status ON photos (person_status)",
     ],
+    # 9: server mode login (tables auth_state, auth_sessions: new tables, made by create_all)
+    9: [],
 }
 
 
@@ -134,8 +136,34 @@ def _set_version(s: Session, v: int) -> None:
     s.commit()
 
 
+def _backup_before_upgrade(from_version: int) -> None:
+    """Copy the database before migrating it (SQLite online backup, safe while open)."""
+    import sqlite3
+
+    dest = config.DB_PATH.with_name(f"physiquelapse.before-v{SCHEMA_VERSION}.db")
+    if dest.exists():
+        return
+    try:
+        src = sqlite3.connect(config.DB_PATH)
+        out = sqlite3.connect(dest)
+        with out:
+            src.backup(out)
+        src.close()
+        out.close()
+        log.info("database v%s backed up to %s before upgrading to v%s", from_version, dest, SCHEMA_VERSION)
+    except Exception as e:  # never block startup on the backup
+        log.warning("could not back up the database before upgrading: %s", e)
+
+
 def init_db() -> None:
     config.ensure_dirs()
+    with Session(engine()) as s:
+        try:
+            v0 = _get_version(s)
+        except Exception:  # brand-new file: no settings table yet
+            v0 = 0
+    if 0 < v0 < SCHEMA_VERSION:
+        _backup_before_upgrade(v0)
     SQLModel.metadata.create_all(engine())
     with Session(engine()) as s:
         v = _get_version(s)

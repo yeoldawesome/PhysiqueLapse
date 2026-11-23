@@ -265,6 +265,29 @@ class Export(SQLModel, table=True):
     created_at: NaiveDatetime = Field(default_factory=now)
 
 
+class AuthState(SQLModel, table=True):
+    """Server mode login: the single user's password hash (argon2). One row, id=1.
+    Kept out of `settings` so the settings API can never return it."""
+
+    __tablename__ = "auth_state"
+
+    id: int = Field(default=1, primary_key=True)
+    password_hash: str
+    updated_at: NaiveDatetime = Field(default_factory=now)
+
+
+class AuthSession(SQLModel, table=True):
+    """A logged-in browser. Only the SHA-256 of the cookie token is stored."""
+
+    __tablename__ = "auth_sessions"
+
+    token_sha256: str = Field(primary_key=True)
+    created_at: NaiveDatetime = Field(default_factory=now)
+    last_seen_at: NaiveDatetime = Field(default_factory=now)
+    expires_at: NaiveDatetime = Field(index=True)
+    user_agent: str = ""
+
+
 class Setting(SQLModel, table=True):
     __tablename__ = "settings"
 

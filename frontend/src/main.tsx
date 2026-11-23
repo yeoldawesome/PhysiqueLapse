@@ -14,6 +14,7 @@ import Settings from "./pages/Settings";
 import Editor from "./pages/Editor";
 import People from "./pages/People";
 import Guide from "./pages/Guide";
+import Login from "./pages/Login";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,6 +23,7 @@ const queryClient = new QueryClient({
 });
 
 const router = createBrowserRouter([
+  { path: "/login", element: <Login /> },
   {
     path: "/",
     element: <App />,
