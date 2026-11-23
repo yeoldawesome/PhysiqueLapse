@@ -12,7 +12,7 @@ function mediapipeWasm(): Plugin {
     name: "mediapipe-wasm",
     configureServer(server) {
       server.middlewares.use("/mediapipe", (req, res, next) => {
-        const file = path.join(WASM_DIR, path.basename(req.url ?? ""));
+        const file = path.join(WASM_DIR, path.basename((req as { url?: string }).url ?? ""));
         if (!fs.existsSync(file)) return next();
         res.setHeader("Content-Type", file.endsWith(".wasm") ? "application/wasm" : "text/javascript");
         fs.createReadStream(file).pipe(res);

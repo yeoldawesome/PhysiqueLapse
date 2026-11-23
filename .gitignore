@@ -23,3 +23,5 @@ packaging/dist/
 packaging/out/
 # server settings (secrets/paths), see .env.example
 .env
+# TypeScript incremental cache (a stale copy hides type errors)
+*.tsbuildinfo
