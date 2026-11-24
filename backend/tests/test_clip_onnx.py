@@ -24,14 +24,14 @@ def _tiny_models(d, size=32, dim=4):
         "visual", [helper.make_tensor_value_info("image", TensorProto.FLOAT, ["batch", 3, size, size])],
         [helper.make_tensor_value_info("embedding", TensorProto.FLOAT, ["batch", dim])], [w_img],
     )
-    onnx.save(helper.make_model(g, opset_imports=[helper.make_opsetid("", 17)]), d / "visual.onnx")
+    onnx.save(helper.make_model(g, opset_imports=[helper.make_opsetid("", 17)], ir_version=8), d / "visual.onnx")
     w_txt = numpy_helper.from_array(rng.normal(size=(77, dim)).astype(np.float32), "w")
     g = helper.make_graph(
         [helper.make_node("Cast", ["text"], ["f"], to=TensorProto.FLOAT), helper.make_node("MatMul", ["f", "w"], ["embedding"])],
         "textual", [helper.make_tensor_value_info("text", TensorProto.INT64, ["batch", 77])],
         [helper.make_tensor_value_info("embedding", TensorProto.FLOAT, ["batch", dim])], [w_txt],
     )
-    onnx.save(helper.make_model(g, opset_imports=[helper.make_opsetid("", 17)]), d / "textual.onnx")
+    onnx.save(helper.make_model(g, opset_imports=[helper.make_opsetid("", 17)], ir_version=8), d / "textual.onnx")
     with gzip.open(d / "bpe_simple_vocab_16e6.txt.gz", "wt", encoding="utf-8") as f:
         f.write("#version: 0.2\nt h\nth e</w>\na b\n")
     (d / "clip_onnx.json").write_text(json.dumps({"image_size": size, "mean": [0.5] * 3, "std": [0.25] * 3, "context_length": 77}))
