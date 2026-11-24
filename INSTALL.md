@@ -16,9 +16,9 @@ All downloads are on the **[Releases page](../../releases/latest)**, under **Ass
 | Windows 10 or 11 (64-bit) | `PhysiqueLapse-<version>-Setup.exe` |
 | Windows, but you can't or don't want to install things | `PhysiqueLapse-<version>-portable.zip` |
 | Mac with Apple Silicon (M1, M2, M3, M4 or newer), macOS 12 or later | `PhysiqueLapse-<version>-mac.dmg` |
-| Mac with an Intel chip | no download yet; see [Intel Mac](#intel-mac) |
+| Mac with an Intel chip, macOS 12 or later | `PhysiqueLapse-<version>-mac-intel.dmg` |
 
-Not sure which Mac you have? Apple menu (top-left) → **About This Mac**. "Chip: Apple M…" means Apple Silicon; "Processor: Intel…" means Intel.
+Not sure which Mac you have? Apple menu (top-left) → **About This Mac**. "Chip: Apple M…" means Apple Silicon (`-mac.dmg`); "Processor: Intel…" means Intel (`-mac-intel.dmg`). An Intel Mac can't open the Apple Silicon version; an Apple Silicon Mac can run the Intel one, but slower, so pick the right one.
 
 ---
 
@@ -45,7 +45,7 @@ Keep the whole folder together. `PhysiqueLapse.exe` doesn't work on its own.
 
 ## Mac
 
-1. Download **`PhysiqueLapse-<version>-mac.dmg`**.
+1. Download **`PhysiqueLapse-<version>-mac.dmg`** (Apple Silicon) or **`PhysiqueLapse-<version>-mac-intel.dmg`** (Intel).
 2. Double-click the `.dmg`. A window opens with the PhysiqueLapse icon and an Applications folder.
 3. **Drag PhysiqueLapse onto Applications.**
 4. Eject the disk image (the ⏏ next to "PhysiqueLapse" in Finder's sidebar). You can delete the `.dmg` afterwards.
@@ -72,15 +72,7 @@ Press Enter, then open the app normally.
 
 ### Intel Mac
 
-There's no ready-made Intel download yet. You can run it from source:
-
-```bash
-git clone https://github.com/yeoldawesome/PhysiqueLapse.git
-cd PhysiqueLapse
-./start.sh            # first time: installs everything (needs Python 3.12 and Node 22)
-```
-
-It opens in your browser at http://127.0.0.1:8000.
+Same steps as above, with **`PhysiqueLapse-<version>-mac-intel.dmg`**. It runs the same app; the image model tries the Mac's GPU and falls back to the CPU, which on older Intel Macs is slower (sorting thousands of photos can take a while).
 
 ---
 
@@ -124,6 +116,7 @@ Your photos never leave your computer. The app copies them into its own library 
 |---|---|
 | Windows: "Windows protected your PC" | **More info → Run anyway** (see [Windows](#windows)) |
 | Mac: "can't be opened", "Apple could not verify", or "is damaged and can't be opened" | Do the **Open Anyway** steps or the Terminal line in [Mac](#mac). "Damaged" is the same block, not a broken download. |
+| Mac: "You can't open the application… because this application is not supported on this Mac" | You have an Intel Mac and downloaded the Apple Silicon version. Get `-mac-intel.dmg` instead. |
 | Mac: nothing happens when you click Open Anyway | Open the app from Applications once more right after clicking it; the button only works for a short while after the blocked attempt. |
 | The window stays on "Starting…" | The first launch can take a minute. If it never gets past it, look at the log: `logs/physiquelapse.log` inside the library folder. |
 | "Downloading models" fails | The app needs internet once for the ~75 MB model download. Check your connection or firewall, then restart the app. |

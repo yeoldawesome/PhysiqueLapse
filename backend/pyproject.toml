@@ -24,9 +24,12 @@ dependencies = [
   "numpy>=1.26,<2",
   "protobuf>=4.25.3,<5",
   "opencv-contrib-python>=4.10,<5",
-  "torch>=2.6",
-  "torchvision",
-  "open_clip_torch>=2.26",
+  # PyTorch + open_clip: CLIP from source and the ONNX export at build time. PyTorch has no
+  # Intel-Mac builds past 2.2, so there CLIP runs only from the ONNX files (the Intel Mac app
+  # ships them, exported on another machine).
+  "torch>=2.6; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+  "torchvision; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+  "open_clip_torch>=2.26; sys_platform != 'darwin' or platform_machine != 'x86_64'",
   "imageio-ffmpeg>=0.5",
   # CLIP on any GPU without PyTorch (see app/services/clip_backend.py). On Windows the DirectML
   # build (NVIDIA, AMD, Intel GPUs; falls back to the CPU); it replaces the plain package there.

@@ -25,3 +25,4 @@ packaging/out/
 *.tsbuildinfo
 # CLIP exported to ONNX for the desktop build (build.ps1)
 packaging/clip_onnx/
+packaging/clip-check.log

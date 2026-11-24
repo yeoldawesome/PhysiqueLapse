@@ -15,6 +15,7 @@ Grab the file for your computer from the [Releases page](../../releases/latest):
 | Windows 10 / 11 | `PhysiqueLapse-<version>-Setup.exe` | Run it. If "Windows protected your PC" appears: **More info → Run anyway**. |
 | Windows, no install | `PhysiqueLapse-<version>-portable.zip` | Extract, run `PhysiqueLapse.exe`. |
 | Mac, Apple Silicon (M1 or newer), macOS 12+ | `PhysiqueLapse-<version>-mac.dmg` | Drag PhysiqueLapse into Applications. First open is blocked: **System Settings → Privacy & Security → Open Anyway**. |
+| Mac, Intel, macOS 12+ | `PhysiqueLapse-<version>-mac-intel.dmg` | Same as above. |
 
 No Python, Node or anything else needed. The app uses your GPU automatically (NVIDIA / AMD / Intel on Windows, the Apple GPU on a Mac) and falls back to the CPU. First launch downloads about 75 MB of models, once. Your photos stay on your computer: `%LOCALAPPDATA%\PhysiqueLapse` on Windows, `~/Library/Application Support/PhysiqueLapse` on a Mac.
 
@@ -26,7 +27,7 @@ No Python, Node or anything else needed. The app uses your GPU automatically (NV
 .\packaging\build.ps1 -Version 0.2.0                   # -> packaging\out\ (portable zip; installer too if Inno Setup 6 is installed)
 ```
 
-Mac: `python3.12 -m venv .venv && .venv/bin/pip install -e "backend[desktop]" && ./packaging/build-mac.sh 0.2.0` (-> `packaging/out/PhysiqueLapse-0.2.0-mac.dmg`).
+Mac: `python3.12 -m venv .venv && .venv/bin/pip install -e "backend[desktop]" && ./packaging/build-mac.sh 0.2.0` (-> `packaging/out/PhysiqueLapse-0.2.0-mac.dmg`, or `-mac-intel.dmg` on an Intel Mac; there, copy a `packaging/clip_onnx` exported on another machine first, since PyTorch has no Intel-Mac builds).
 
 Releases are built by GitHub Actions (`.github/workflows/release.yml`) on Windows and macOS runners: push a tag such as `v0.2.0`, or use **Actions → Release desktop apps → Run workflow** with a version, and the Windows installer, zip and Mac disk image are attached to a new release. Run the app from source in its window with `cd backend; ..\.venv\Scripts\python -m app.desktop`.
 

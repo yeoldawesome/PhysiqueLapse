@@ -123,3 +123,17 @@ def test_export_matches_torch(tmp_path):
     from scripts.export_clip_onnx import export
 
     export(tmp_path / "clip_onnx", random_weights=True, check=True)
+
+
+def test_one_at_a_time_matches_batched(tmp_path, monkeypatch):
+    """Core ML path: batch pinned to 1, items run one by one; same results as a batched run."""
+    monkeypatch.setenv("PL_CLIP_DEVICE", "cpu")
+    from app.services.clip_backend import OnnxClipScorer
+
+    sc = OnnxClipScorer(_tiny_models(tmp_path))
+    ims = [Image.new("RGB", (60, 40 + 10 * i), (40 * i, 90, 200 - 30 * i)) for i in range(4)]
+    batched = sc.positive_probability(ims, ["a", "the"], ["b"])
+    sc._one_at_a_time = True
+    sc._text_cache.clear()
+    assert np.allclose(sc.positive_probability(ims, ["a", "the"], ["b"]), batched)
+

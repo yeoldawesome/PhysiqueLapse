@@ -190,7 +190,10 @@ class OnnxClipScorer:
             providers.insert(0, (gpu, {"performance_preference": "high_performance", "device_filter": "gpu"}))
         elif gpu == "CoreMLExecutionProvider":
             # ML Program format runs on the Apple GPU / Neural Engine; the compiled model is cached
-            # so later launches don't compile it again
+            # so later launches don't compile it again. Core ML can't compile a model whose batch
+            # size is open ("unbounded dimension"), so it is pinned to 1 and batches are run one
+            # item at a time (see _run).
+            so.add_free_dimension_override_by_name("batch", 1)
             cache = config.MODELS_DIR / "coreml_cache"
             cache.mkdir(parents=True, exist_ok=True)
             providers.insert(0, (gpu, {"ModelFormat": "MLProgram", "MLComputeUnits": "ALL", "ModelCacheDirectory": str(cache)}))
@@ -214,6 +217,7 @@ class OnnxClipScorer:
         if gpu and used != gpu:
             raise RuntimeError(f"{gpu} not usable")
         self.gpu = gpu
+        self._one_at_a_time = gpu == "CoreMLExecutionProvider"
         self.accelerator = f"GPU ({_GPU_PROVIDERS[gpu]})" if gpu else "CPU"
         self._text_cache.clear()
         log.info("CLIP (ONNX) running on %s", self.accelerator)
@@ -228,11 +232,17 @@ class OnnxClipScorer:
             self._load(None)
             return fn(*a)
 
+    def _run(self, sess, x: np.ndarray) -> np.ndarray:
+        name = sess.get_inputs()[0].name
+        if getattr(self, "_one_at_a_time", False) and len(x) != 1:
+            return np.concatenate([sess.run(None, {name: x[i : i + 1]})[0] for i in range(len(x))])
+        return sess.run(None, {name: x})[0]
+
     def _run_visual(self, batch: np.ndarray) -> np.ndarray:
-        return self.visual.run(None, {self.visual.get_inputs()[0].name: batch})[0]
+        return self._run(self.visual, batch)
 
     def _run_text(self, tokens: np.ndarray) -> np.ndarray:
-        return self.textual.run(None, {self.textual.get_inputs()[0].name: tokens})[0]
+        return self._run(self.textual, tokens)
 
     def preprocess(self, im: Image.Image) -> np.ndarray:
         """open_clip's eval transform: resize the short side (bicubic), centre crop, normalise.

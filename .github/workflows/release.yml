@@ -4,7 +4,7 @@
 #
 # -> Releases page gets PhysiqueLapse-0.2.0-Setup.exe (Windows installer),
 #    PhysiqueLapse-0.2.0-portable.zip (Windows, unzip and run PhysiqueLapse.exe) and
-#    PhysiqueLapse-0.2.0-mac.dmg (Apple Silicon Mac, drag to Applications).
+#    PhysiqueLapse-0.2.0-mac.dmg (Apple Silicon Mac) and PhysiqueLapse-0.2.0-mac-intel.dmg (Intel Mac).
 # "Run workflow" on the Actions tab builds the same files as a downloadable artifact without a release,
 # or, with a version filled in (e.g. 0.2.0), also creates the tag v0.2.0 on that commit and publishes it.
 name: Release desktop apps
@@ -109,19 +109,14 @@ jobs:
           ./packaging/build-mac.sh "${v#v}"
 
       - name: Smoke test (the built app starts and serves its API)
-        run: |
-          APPDATA="$HOME/Library/Application Support/PhysiqueLapse"
-          rm -f "$APPDATA/app.port"
-          packaging/dist/PhysiqueLapse.app/Contents/MacOS/PhysiqueLapse &
-          PID=$!
-          for i in $(seq 1 90); do [ -f "$APPDATA/app.port" ] && break; sleep 2; done
-          PORT=$(cat "$APPDATA/app.port")
-          for i in $(seq 1 60); do curl -fs "http://127.0.0.1:$PORT/api/health" && break; sleep 2; done
-          echo
-          curl -fs "http://127.0.0.1:$PORT/api/system" | python3 -c "import json,sys; d=json.load(sys.stdin); print('acceleration:', d['acceleration']); print('clip:', d['models']['clip']['present'])"
-          curl -fs "http://127.0.0.1:$PORT/" | grep -q '<div id="root">'
-          kill $PID || true
-          tail -30 "$APPDATA/logs/physiquelapse.log" || true
+        run: ./packaging/smoke-mac.sh
+
+      - name: Upload CLIP ONNX (for the Intel Mac build, which has no recent PyTorch)
+        uses: actions/upload-artifact@v4
+        with:
+          name: clip-onnx
+          path: packaging/clip_onnx
+          retention-days: 1
 
       - name: Upload build (workflow artifact)
         uses: actions/upload-artifact@v4
@@ -130,13 +125,63 @@ jobs:
           path: packaging/out/*.dmg
           retention-days: 14
 
+  mac-intel:
+    needs: mac  # uses its CLIP ONNX export
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: clip-onnx
+          path: packaging/clip_onnx
+
+      - name: Install Python dependencies (no PyTorch on Intel Macs)
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e "backend[dev,desktop]"
+
+      - name: Run tests
+        working-directory: backend
+        run: ../.venv/bin/python -m pytest -q
+
+      - name: Build app and disk image
+        run: |
+          v="${{ env.RELEASE_TAG }}"
+          ./packaging/build-mac.sh "${v#v}"
+
+      - name: Smoke test (the built app starts and serves its API)
+        run: ./packaging/smoke-mac.sh
+
+      - name: Upload build (workflow artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhysiqueLapse-mac-intel
+          path: packaging/out/*.dmg
+          retention-days: 14
+
   publish:
     if: github.ref_type == 'tag' || inputs.version != ''
-    needs: [windows, mac]
+    needs: [windows, mac, mac-intel]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: PhysiqueLapse-*
           path: out
           merge-multiple: true
 
@@ -150,6 +195,7 @@ jobs:
             out/*-Setup.exe
             out/*-portable.zip
             out/*-mac.dmg
+            out/*-mac-intel.dmg
           generate_release_notes: true
           body: |
             ## Download
@@ -160,9 +206,10 @@ jobs:
             - **PhysiqueLapse-…-portable.zip**: no install; unzip anywhere and run `PhysiqueLapse.exe`.
             - Windows may show "Windows protected your PC" because the app isn't code-signed: click **More info → Run anyway**.
 
-            **Mac with Apple Silicon (M1 or newer), macOS 12+**
-            - **PhysiqueLapse-…-mac.dmg**: open it and drag PhysiqueLapse into Applications.
+            **Mac, macOS 12+**
+            - **PhysiqueLapse-…-mac.dmg**: Apple Silicon (M1 or newer). Open it and drag PhysiqueLapse into Applications.
+            - **PhysiqueLapse-…-mac-intel.dmg**: Intel Macs. Same steps.
             - The app isn't notarized by Apple, so the first time macOS refuses to open it: open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to PhysiqueLapse (or run `xattr -dr com.apple.quarantine /Applications/PhysiqueLapse.app` in Terminal once).
 
-            Nothing else to install. The image model runs on your GPU (Windows: NVIDIA, AMD or Intel through DirectML; Mac: the Apple GPU / Neural Engine through Core ML) and falls back to the CPU; video export uses the hardware encoder when there is one. On first launch the app downloads its pose and face models (~75 MB, one time).
+            Nothing else to install. The image model runs on your GPU (Windows: NVIDIA, AMD or Intel through DirectML; Mac: the GPU / Neural Engine through Core ML) and falls back to the CPU; video export uses the hardware encoder when there is one. On first launch the app downloads its pose and face models (~75 MB, one time).
             Your photos stay on your computer: `%LOCALAPPDATA%\PhysiqueLapse` on Windows, `~/Library/Application Support/PhysiqueLapse` on a Mac.
