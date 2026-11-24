@@ -4,13 +4,22 @@
 #
 # -> Releases page gets PhysiqueLapse-0.2.0-Setup.exe (installer) and
 #    PhysiqueLapse-0.2.0-portable.zip (unzip and run PhysiqueLapse.exe).
-# "Run workflow" on the Actions tab builds the same files as a downloadable artifact without a release.
+# "Run workflow" on the Actions tab builds the same files as a downloadable artifact without a release,
+# or, with a version filled in (e.g. 0.2.0), also creates the tag v0.2.0 on that commit and publishes it.
 name: Release Windows app
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Publish as this version (e.g. 0.2.0; creates tag v0.2.0). Empty = build only."
+        required: false
+        default: ""
+
+env:
+  RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || (inputs.version != '' && format('v{0}', inputs.version) || '') }}
 
 permissions:
   contents: write
@@ -53,7 +62,7 @@ jobs:
       - name: Build app, portable zip and installer
         shell: pwsh
         run: |
-          $v = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "" }
+          $v = "${{ env.RELEASE_TAG }}"
           .\packaging\build.ps1 -Version $v
 
       - name: Upload build (workflow artifact)
@@ -64,9 +73,12 @@ jobs:
           retention-days: 14
 
       - name: Publish release
-        if: github.ref_type == 'tag'
+        if: env.RELEASE_TAG != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: PhysiqueLapse ${{ env.RELEASE_TAG }}
           files: |
             packaging/out/*-Setup.exe
             packaging/out/*-portable.zip
