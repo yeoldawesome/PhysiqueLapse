@@ -137,3 +137,14 @@ def test_one_at_a_time_matches_batched(tmp_path, monkeypatch):
     sc._text_cache.clear()
     assert np.allclose(sc.positive_probability(ims, ["a", "the"], ["b"]), batched)
 
+
+def test_intel_mac_skips_core_ml(monkeypatch):
+    from app.services import clip_backend
+
+    monkeypatch.setattr(ort, "get_available_providers", lambda: ["CoreMLExecutionProvider", "CPUExecutionProvider"])
+    monkeypatch.setenv("PL_CLIP_DEVICE", "auto")
+    monkeypatch.setattr(clip_backend, "_intel_mac", lambda: True)
+    assert clip_backend._ort_gpu_provider() is None
+    monkeypatch.setattr(clip_backend, "_intel_mac", lambda: False)
+    assert clip_backend._ort_gpu_provider() == "CoreMLExecutionProvider"
+

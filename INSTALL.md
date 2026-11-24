@@ -72,7 +72,7 @@ Press Enter, then open the app normally.
 
 ### Intel Mac
 
-Same steps as above, with **`PhysiqueLapse-<version>-mac-intel.dmg`**. It runs the same app; the image model tries the Mac's GPU and falls back to the CPU, which on older Intel Macs is slower (sorting thousands of photos can take a while).
+Same steps as above, with **`PhysiqueLapse-<version>-mac-intel.dmg`**. It runs the same app. The image model runs on the CPU (on Intel Macs Apple's Core ML was slower than the CPU in our tests), so sorting thousands of photos takes longer than on an Apple Silicon Mac.
 
 ---
 

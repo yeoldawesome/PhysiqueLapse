@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import threading
 from pathlib import Path
 from typing import Protocol
@@ -140,7 +141,17 @@ def _ort_gpu_provider() -> str | None:
     except ImportError:
         return None
     have = ort.get_available_providers()
+    if _intel_mac():
+        # measured on an Intel Mac: Core ML took 10+ minutes to compile the model, then ran it
+        # slower than the CPU (no Neural Engine), so Intel Macs use the CPU
+        have = [p for p in have if p != "CoreMLExecutionProvider"]
     return next((p for p in _GPU_PROVIDERS if p in have), None)
+
+
+def _intel_mac() -> bool:
+    import platform
+
+    return sys.platform == "darwin" and platform.machine() == "x86_64"
 
 
 class OnnxClipScorer:
