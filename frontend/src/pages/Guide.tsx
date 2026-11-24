@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import {
   Activity,
@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { useCategories, useDashboard } from "../api/queries";
 import { PageHeader } from "../components/ui";
+import Tutorial from "../components/onboarding/Tutorial";
+import { useOnboarding } from "../api/onboarding";
 
 type Step = { title: string; body: ReactNode; done: boolean | null; to: string; action: string };
 
@@ -102,6 +104,8 @@ export default function Guide() {
   const c = dash?.counts;
   const examples = cats.reduce((n, x) => n + ((x as { label_count?: number }).label_count ?? 0), 0);
   const known = !!dash;
+  const { data: onboarding } = useOnboarding();
+  const [tour, setTour] = useState(false);
   const steps: Step[] = [
     {
       title: "Import your photos",
@@ -111,27 +115,16 @@ export default function Guide() {
       action: "Import",
     },
     {
-      title: "Find the joints",
+      title: "Show it your poses",
       body: (
         <>
-          Press <b>Extract landmarks</b> on the Dashboard. A pose model marks your shoulders, elbows, wrists, hips and face in every photo; everything else builds on
-          this.
+          After the import the app finds your joints in every photo and keeps the ones that show your physique. Then, before anything is sorted, you pick a few of{" "}
+          <b>your own</b> photos for each pose (skip the ones you don't do). Every photo is sorted by those examples. Change them later in{" "}
+          <b>Settings → Pose examples</b>.
         </>
       ),
-      done: known ? (c?.photos ?? 0) > 0 && (c?.landmarks_pending ?? 1) === 0 : null,
-      to: "/",
-      action: "Dashboard",
-    },
-    {
-      title: "Teach it your poses",
-      body: (
-        <>
-          In <b>Settings → Pose examples</b>, give each pose a few clear examples (upload images, or set a photo's pose in the Library). Then press{" "}
-          <b>Reclassify all</b>: every photo goes to the pose its joints and angles are closest to.
-        </>
-      ),
-      done: known ? examples >= 2 : null,
-      to: "/settings",
+      done: onboarding ? onboarding.pose_setup_done : known ? examples >= 2 : null,
+      to: "/setup",
       action: "Pose examples",
     },
     {
@@ -173,7 +166,12 @@ export default function Guide() {
 
   return (
     <div>
-      <PageHeader title="Start here" subtitle="how PhysiqueLapse works and what everything does" />
+      <PageHeader title="Start here" subtitle="how PhysiqueLapse works and what everything does">
+        <button className="btn btn-sm" onClick={() => setTour(true)}>
+          <Play size={14} /> Replay tutorial
+        </button>
+      </PageHeader>
+      <Tutorial open={tour} onClose={() => setTour(false)} />
       <div className="mx-auto flex max-w-6xl flex-col gap-8 p-3 md:p-6">
         {/* intro */}
         <div className="card overflow-hidden">

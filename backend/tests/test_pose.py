@@ -160,6 +160,7 @@ def _wait(client, jid, timeout=30):
 def test_extract_and_classify_jobs(client, tmp_path):
     fixtures = {10: PF.front_double_bicep(), 60: PF.front_relaxed(), 110: PF.side_left(), 160: PF.no_person()}
     set_backend_for_tests(FakeBackend(fixtures), key="heavy")
+    client.put("/api/settings", json={"pose_setup_done": True})  # past the first-run pose step
     try:
         root = tmp_path / "poses"
         for tag in fixtures:

@@ -378,8 +378,15 @@ def job_ingest_upload(ctx: JobContext, params: dict) -> dict:
             s.delete(it)
         s.commit()
         auto = auto_process_enabled(load_settings(s))
+        from .onboarding import pose_setup_done
+
+        setup_done = pose_setup_done(s)
     ids = result.get("photo_ids") or []
-    if auto and ids:
+    if ids and not setup_done:
+        # first import: find the joints now, but sort nothing until the user has shown their poses
+        result["chain"] = [{"type": "extract_landmarks", "params": {"ids": ids}}, {"type": "pose_setup_prepare", "params": {}}]
+        result["message"] += ". Getting them ready for your pose examples"
+    elif auto and ids:
         result["chain"] = processing_chain(ids)
         result["message"] += ". Processing the new photos next"
     return result
@@ -412,7 +419,15 @@ def job_ingest_folder(ctx: JobContext, params: dict) -> dict:
         raise FileNotFoundError(f"folder not found: {root}")
     ctx.message("Scanning folder")
     files = [(p, p.relative_to(root).as_posix()) for p in _iter_folder(root, recursive)]
-    return run_ingest_session(ctx, session_id, files=files, source="folder", move=False)
+    result = run_ingest_session(ctx, session_id, files=files, source="folder", move=False)
+    ids = result.get("photo_ids") or []
+    with ctx.session() as s:
+        from .onboarding import pose_setup_done
+
+        if ids and not pose_setup_done(s):
+            result["chain"] = [{"type": "extract_landmarks", "params": {"ids": ids}}, {"type": "pose_setup_prepare", "params": {}}]
+            result["message"] += ". Getting them ready for your pose examples"
+    return result
 
 
 @job("reimport_candidate", lane="io", title="Import file")

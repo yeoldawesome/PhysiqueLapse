@@ -132,7 +132,8 @@ def test_auto_process_chains_landmarks_classify_align(client):
         # an older photo that must not be reprocessed
         old = _session(client)
         d0 = image_bytes(make_image(seed=20))
-        client.put("/api/settings", json={"auto_process_uploads": False})
+        # (a library past the first-run pose step; before it, uploads only get their joints found)
+        client.put("/api/settings", json={"auto_process_uploads": False, "pose_setup_done": True})
         it = _init(client, old, "old.jpg", d0).json()
         _put(client, old, it["id"], 0, d0)
         wait_job(client, client.post(f"/api/imports/upload-session/{old}/commit").json()["job"]["id"])

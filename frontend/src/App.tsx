@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink, Outlet } from "react-router";
 import {
   Activity,
@@ -14,6 +15,9 @@ import {
 import JobDrawer from "./components/JobDrawer";
 import Toasts from "./components/Toasts";
 import { useDashboard } from "./api/queries";
+import { useOnboarding } from "./api/onboarding";
+import Tutorial from "./components/onboarding/Tutorial";
+import SetupBanner from "./components/onboarding/SetupBanner";
 
 interface NavItem {
   to: string;
@@ -103,6 +107,8 @@ function Brand() {
 
 function Shell() {
   const b = useBadges();
+  const { data: onboarding } = useOnboarding();
+  const [tutorialClosed, setTutorialClosed] = useState(false);
   return (
     <div className="flex h-full">
       <aside className="flex w-52 shrink-0 flex-col border-r border-border bg-panel">
@@ -111,8 +117,10 @@ function Shell() {
         <div className="mt-auto px-4 py-3 text-[11px] text-muted">{b.photos != null ? `${b.photos} photos` : "…"}</div>
       </aside>
       <main className="relative min-w-0 flex-1 overflow-auto">
+        <SetupBanner />
         <Outlet />
       </main>
+      <Tutorial open={!!onboarding?.show_tutorial && !tutorialClosed} onClose={() => setTutorialClosed(true)} />
       <JobDrawer />
       <Toasts />
     </div>

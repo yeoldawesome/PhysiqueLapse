@@ -15,7 +15,7 @@ api.include_router(imports.router)
 
 def include_optional() -> None:
     """Routers for later milestones register themselves here when their modules exist."""
-    for name in ("landmarks", "alignment", "viewer", "exports", "metrics", "review", "snapchat", "snapchat_zips", "measurements", "abs", "sleeves", "faces", "people"):
+    for name in ("landmarks", "alignment", "viewer", "exports", "metrics", "review", "snapchat", "snapchat_zips", "measurements", "abs", "sleeves", "faces", "people", "onboarding"):
         try:
             mod = __import__(f"app.api.{name}", fromlist=["router"])
         except ImportError:

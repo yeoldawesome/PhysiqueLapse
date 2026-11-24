@@ -14,6 +14,7 @@ import Settings from "./pages/Settings";
 import Editor from "./pages/Editor";
 import People from "./pages/People";
 import Guide from "./pages/Guide";
+import PoseSetup from "./pages/PoseSetup";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +33,7 @@ const router = createBrowserRouter([
       { path: "review", element: <ReviewQueue /> },
       { path: "people", element: <People /> },
       { path: "guide", element: <Guide /> },
+      { path: "setup", element: <PoseSetup /> },
       { path: "viewer", element: <Viewer /> },
       { path: "editor/:photoId", element: <Editor /> },
       { path: "stats", element: <Stats /> },
