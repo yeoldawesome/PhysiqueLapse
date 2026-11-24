@@ -9,7 +9,8 @@ Everything runs on this computer. The server binds to `127.0.0.1` only. The only
 Get **`PhysiqueLapse-<version>-Setup.exe`** from the [Releases page](../../releases/latest), run it, and open PhysiqueLapse from the Start menu. It runs in its own window; no Python, Node or browser setup needed.
 
 - Windows 10 or 11, 64-bit. No administrator rights needed.
-- First launch downloads the models (about 650 MB, one time); progress shows in the job panel.
+- Uses your GPU automatically (NVIDIA, AMD or Intel) for the image model and video export, and falls back to the CPU when there isn't one. Nothing extra to install; Settings → System shows what it's using.
+- First launch downloads the pose and face models (about 75 MB, one time); progress shows in the job panel.
 - Windows may say **"Windows protected your PC"** because the app isn't code-signed: click **More info → Run anyway**.
 - Your library lives in `%LOCALAPPDATA%\PhysiqueLapse` (photos, database, models, logs). Updating or reinstalling keeps it; the uninstaller asks before deleting it.
 - Prefer no installer? Download **`PhysiqueLapse-<version>-portable.zip`**, unzip anywhere and run `PhysiqueLapse.exe`.

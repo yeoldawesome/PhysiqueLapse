@@ -76,6 +76,6 @@ jobs:
             - **PhysiqueLapse-…-Setup.exe**: installer (recommended). No admin rights needed.
             - **PhysiqueLapse-…-portable.zip**: no install; unzip anywhere and run `PhysiqueLapse.exe`.
 
-            Windows 10 or 11 (64-bit). On first launch the app downloads its models (~650 MB, one time).
+            Windows 10 or 11 (64-bit). Nothing else to install: the image model runs on your GPU (NVIDIA, AMD or Intel, through DirectML) and falls back to the CPU when there isn't one; video export uses the GPU's encoder when it has one. On first launch the app downloads its pose and face models (~75 MB, one time).
             Windows may show "Windows protected your PC" because the app isn't code-signed: click **More info → Run anyway**.
             Your photos stay on your computer, in `%LOCALAPPDATA%\PhysiqueLapse`.

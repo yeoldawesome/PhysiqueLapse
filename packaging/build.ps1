@@ -4,6 +4,7 @@
 
 .DESCRIPTION
   1. builds the frontend (npm run build)
+  1b. exports CLIP to ONNX -> packaging\clip_onnx (once)
   2. freezes the app with PyInstaller -> packaging\dist\PhysiqueLapse\PhysiqueLapse.exe
   3. zips that folder -> packaging\out\PhysiqueLapse-<version>-portable.zip
   4. if Inno Setup 6 is installed, builds the installer -> packaging\out\PhysiqueLapse-<version>-Setup.exe
@@ -49,6 +50,14 @@ try {
   if (-not (Test-Path "node_modules")) { npm ci --no-fund --no-audit; if ($LASTEXITCODE) { throw "npm ci failed" } }
   npm run build; if ($LASTEXITCODE) { throw "frontend build failed" }
 } finally { Pop-Location }
+
+# 1b. CLIP as ONNX (GPU via DirectML; lets the app ship without PyTorch). Downloads the weights once.
+$clipOnnx = Join-Path $Pkg "clip_onnx"
+if (-not (Test-Path (Join-Path $clipOnnx "visual.onnx"))) {
+  Write-Host "==> Exporting CLIP to ONNX" -ForegroundColor Cyan
+  & $Py (Join-Path $Root "backend\scripts\export_clip_onnx.py") --out $clipOnnx
+  if ($LASTEXITCODE) { throw "CLIP ONNX export failed" }
+}
 
 # 2. freeze
 & $Py -m PyInstaller --noconfirm --clean --distpath (Join-Path $Pkg "dist") --workpath (Join-Path $Pkg "build") (Join-Path $Pkg "PhysiqueLapse.spec")

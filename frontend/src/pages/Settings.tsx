@@ -239,6 +239,12 @@ export default function Settings() {
               <div>
                 <span className="text-muted">ffmpeg:</span> <span className="font-mono text-xs">{system.ffmpeg ?? "not found"}</span>
               </div>
+              {system.acceleration &&
+                Object.entries(system.acceleration).map(([k, v]) => (
+                  <div key={k}>
+                    <span className="text-muted">{k === "clip" ? "Image model" : k === "video" ? "Video encoder" : "Pose model"}:</span> {v}
+                  </div>
+                ))}
             </div>
             <h3 className="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-muted">Models</h3>
             <ul className="space-y-0.5">

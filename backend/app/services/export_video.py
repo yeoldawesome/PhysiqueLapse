@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import subprocess
+import threading
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -39,6 +41,64 @@ def ffmpeg_exe() -> str:
     import imageio_ffmpeg
 
     return imageio_ffmpeg.get_ffmpeg_exe()
+
+
+# hardware H.264 encoders, tried in this order; the first that encodes a test clip is used.
+# NVIDIA (NVENC), AMD (AMF), Intel (Quick Sync). libx264 (CPU) is the fallback.
+_HW_ENCODERS = ("h264_nvenc", "h264_amf", "h264_qsv")
+_encoder: str | None = None
+_encoder_lock = threading.Lock()
+
+
+def _no_window() -> dict:
+    # the desktop app has no console; without this every ffmpeg call flashes one on Windows
+    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+
+
+def video_encoder() -> str:
+    """H.264 encoder for MP4 export: a GPU encoder when this machine has a working one, else
+    libx264. Probed once per run. PL_VIDEO_ENCODER=libx264 forces the CPU."""
+    global _encoder
+    with _encoder_lock:
+        if _encoder is None:
+            _encoder = (os.environ.get("PL_VIDEO_ENCODER") or "").strip() or _probe_encoder()
+            log.info("MP4 encoder: %s", _encoder)
+        return _encoder
+
+
+def _probe_encoder() -> str:
+    try:
+        exe = ffmpeg_exe()
+        listed = subprocess.run([exe, "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=15, **_no_window()).stdout
+    except Exception:
+        return "libx264"
+    for enc in _HW_ENCODERS:
+        if f" {enc} " not in listed:
+            continue
+        try:
+            r = subprocess.run(
+                [exe, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=320x240:r=30:d=0.2",
+                 "-c:v", enc, *_hw_quality(enc, 8), "-pix_fmt", "yuv420p", "-f", "null", "-"],
+                capture_output=True, timeout=20, **_no_window(),
+            )
+            if r.returncode == 0:
+                return enc
+        except Exception:
+            continue
+    return "libx264"
+
+
+def _hw_quality(enc: str, quality: int) -> list[str]:
+    """The export quality slider (0-10) as a constant-quality setting, on libx264's CRF scale
+    (imageio-ffmpeg maps 0-10 to CRF 51-0 the same way)."""
+    q = str(int((1 - quality / 10.0) * 51))
+    if enc == "h264_nvenc":
+        return ["-preset", "p5", "-rc", "vbr", "-cq", q, "-b:v", "0"]
+    if enc == "h264_amf":
+        return ["-quality", "quality", "-rc", "cqp", "-qp_i", q, "-qp_p", q, "-qp_b", q]
+    if enc == "h264_qsv":
+        return ["-preset", "slower", "-global_quality", q]
+    return []
 
 
 def load_font(size: int) -> ImageFont.ImageFont:
@@ -355,17 +415,30 @@ def job_export(ctx: JobContext, params: dict) -> dict:
             import imageio_ffmpeg
 
             os.environ.setdefault("IMAGEIO_FFMPEG_EXE", ffmpeg_exe())
-            w = imageio_ffmpeg.write_frames(
-                str(tmp), (W, H), fps=out_fps, codec="libx264", pix_fmt_out="yuv420p", quality=quality, macro_block_size=2,
-                output_params=["-movflags", "+faststart", "-f", "mp4"],
-            )
-            w.send(None)
-            for i, (a, b, t) in enumerate(sched, 1):
-                ctx.check_cancelled()
-                w.send(np.ascontiguousarray(blended(a, b, t)).tobytes())
-                if i % 30 == 0:
-                    ctx.progress(i, len(sched))
-            w.close()
+            encoders = [video_encoder()]
+            if encoders[0] != "libx264":
+                encoders.append("libx264")  # GPU encoder failed on this video: redo it on the CPU
+            for enc in encoders:
+                hw = enc != "libx264"
+                w = imageio_ffmpeg.write_frames(
+                    str(tmp), (W, H), fps=out_fps, codec=enc, pix_fmt_out="yuv420p", quality=None if hw else quality,
+                    macro_block_size=2, output_params=[*_hw_quality(enc, quality), "-movflags", "+faststart", "-f", "mp4"],
+                )
+                try:
+                    w.send(None)
+                    for i, (a, b, t) in enumerate(sched, 1):
+                        ctx.check_cancelled()
+                        w.send(np.ascontiguousarray(blended(a, b, t)).tobytes())
+                        if i % 30 == 0:
+                            ctx.progress(i, len(sched), f"Encoding {fmt.upper()} ({'GPU' if hw else 'CPU'})")
+                    w.close()
+                    break
+                except Exception as e:
+                    w.close()
+                    if not hw or ctx.cancelled:
+                        raise
+                    log.warning("%s failed (%s), encoding on the CPU instead", enc, e)
+                    tmp.unlink(missing_ok=True)
         else:
             # collapse runs of identical frames into durations to keep GIFs small
             imgs, durs = [], []

@@ -48,9 +48,10 @@ def required(pose_variant: str = "heavy") -> list[ModelFile]:
 
 def present(m: ModelFile) -> bool:
     if m.key == "clip":
-        from .clip_backend import local_weights  # also accepts a Hugging Face cache copy
+        from .clip_backend import local_weights, onnx_usable  # also accepts a Hugging Face cache copy
 
-        return local_weights() is not None
+        # the desktop app ships CLIP as ONNX, so it never downloads the PyTorch weights
+        return onnx_usable() or local_weights() is not None
     return m.path.is_file() and m.path.stat().st_size > 0
 
 

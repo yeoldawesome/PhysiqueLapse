@@ -215,6 +215,7 @@ export interface SystemInfo {
   models: Record<string, { path: string; present: boolean; bytes: number; name?: string }>;
   active_pose_model: string;
   ffmpeg: string | null;
+  acceleration?: Record<string, string>;
   versions: Record<string, string | null>;
   bind: string;
 }

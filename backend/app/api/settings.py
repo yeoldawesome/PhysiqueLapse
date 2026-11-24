@@ -82,10 +82,14 @@ def system_info(s: Session = Depends(get_session)) -> dict[str, Any]:
     for variant in ("lite", "full", "heavy"):
         p = config.pose_model_path(variant)
         models[f"pose_{variant}"] = {"path": str(p), "present": p.exists(), "bytes": p.stat().st_size if p.exists() else 0}
+    from ..services import clip_backend
+    from ..services.export_video import video_encoder
+
     flat = config.clip_weights_path()
-    clip_files = [flat] if flat.exists() else []
+    onnx_dir = config.clip_onnx_dir() if clip_backend.onnx_usable() else None
+    clip_files = list(onnx_dir.iterdir()) if onnx_dir else [flat] if flat.exists() else []
     models["clip"] = {
-        "path": str(flat),
+        "path": str(onnx_dir or flat),
         "present": bool(clip_files),
         "bytes": sum(f.stat().st_size for f in clip_files),
         "name": f"{config.CLIP_MODEL_NAME} / {config.CLIP_PRETRAINED}",
@@ -107,6 +111,7 @@ def system_info(s: Session = Depends(get_session)) -> dict[str, Any]:
         "models": models,
         "active_pose_model": settings.pose_model,
         "ffmpeg": ffmpeg,
+        "acceleration": {"clip": clip_backend.accelerator(), "video": video_encoder(), "pose": "CPU (MediaPipe)"},
         "versions": {
             "python": sys.version.split()[0],
             "platform": platform.platform(),
@@ -114,6 +119,7 @@ def system_info(s: Session = Depends(get_session)) -> dict[str, Any]:
             "mediapipe": _version("mediapipe"),
             "torch": _version("torch"),
             "open_clip_torch": _version("open_clip_torch"),
+            "onnxruntime": _version("onnxruntime") or _version("onnxruntime-directml") or _version("onnxruntime-gpu"),
             "opencv": _version("opencv-contrib-python"),
             "numpy": _version("numpy"),
             "pillow": _version("pillow"),

@@ -173,6 +173,22 @@ def clip_weights_path() -> Path:
     return MODELS_DIR / "clip_vit_b32_laion2b.safetensors"
 
 
+# CLIP as ONNX (scripts/export_clip_onnx.py): runs on any GPU through ONNX Runtime (DirectML on
+# Windows, CUDA where onnxruntime-gpu is installed) without PyTorch. The desktop app ships it.
+CLIP_ONNX_FILES = ("visual.onnx", "textual.onnx", "bpe_simple_vocab_16e6.txt.gz", "clip_onnx.json")
+
+
+def clip_onnx_dir() -> Path | None:
+    """Folder holding the exported CLIP ONNX files: bundled with the desktop app, else data/models."""
+    dirs = [MODELS_DIR / "clip_onnx"]
+    if FROZEN:
+        dirs.insert(0, Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "clip_onnx")
+    for d in dirs:
+        if all((d / f).is_file() for f in CLIP_ONNX_FILES):
+            return d
+    return None
+
+
 def pose_model_path(variant: str = "heavy") -> Path:
     return MODELS_DIR / f"pose_landmarker_{variant}.task"
 

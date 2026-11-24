@@ -25,3 +25,5 @@ packaging/out/
 .env
 # TypeScript incremental cache (a stale copy hides type errors)
 *.tsbuildinfo
+# CLIP exported to ONNX for the desktop build (build.ps1)
+packaging/clip_onnx/
