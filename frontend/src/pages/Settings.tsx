@@ -5,6 +5,157 @@ import type { Category, Settings as S } from "../api/types";
 import { ConfirmButton, Field, PageHeader, Spinner, Toggle } from "../components/ui";
 import { fmtBytes } from "../lib/format";
 import PoseTeaching from "../components/PoseTeaching";
+import { post } from "../api/client";
+import type { Job } from "../api/types";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "../lib/toast";
+
+interface GpuTest {
+  ok: boolean;
+  device: string;
+  on_gpu: boolean;
+  wanted: "GPU" | "CPU";
+  gpu_names?: string[];
+  load_s?: number;
+  ms_per_image?: number;
+  error: string | null;
+  fell_back?: boolean;
+}
+
+/** Settings → GPU: the image model is really run once on test pictures (automatically the first
+ * time this page opens in a run of the app), so this says where it works, not where it might. */
+function Acceleration({ video }: { video?: string }) {
+  const [test, setTest] = useState<GpuTest | null>(null);
+  const [running, setRunning] = useState(false);
+  const run = async (force: boolean) => {
+    setRunning(true);
+    try {
+      setTest((await post<{ image_model: GpuTest }>(`/system/gpu-test${force ? "?force=true" : ""}`)).image_model);
+    } catch (e) {
+      setTest({ ok: false, device: "unknown", on_gpu: false, wanted: "CPU", error: (e as Error).message });
+    } finally {
+      setRunning(false);
+    }
+  };
+  useEffect(() => {
+    void run(false); // returns the cached result instantly after the first test
+  }, []);
+  const gpuVideo = video && video !== "libx264";
+  const t = test;
+  return (
+    <>
+      <h3 className="mb-1 mt-4 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted">
+        GPU acceleration
+        <button className="btn btn-ghost btn-sm normal-case tracking-normal" disabled={running} onClick={() => void run(true)}>
+          {running ? <Spinner size={12} /> : null} Test again
+        </button>
+      </h3>
+      <div className="space-y-1.5 text-sm">
+        <div className="flex gap-2">
+          <span className="w-28 shrink-0 text-muted">Image model</span>
+          {running && !t ? (
+            <span className="flex items-center gap-1.5 text-muted">
+              <Spinner size={12} /> testing on test pictures…
+            </span>
+          ) : !t ? null : t.ok ? (
+            <span>
+              <span className="text-ok">✓ works</span> on {t.on_gpu ? <b>{t.device}</b> : "the CPU"}
+              {t.ms_per_image != null && <span className="text-muted"> · {t.ms_per_image} ms per photo</span>}
+              {t.on_gpu && t.gpu_names && t.gpu_names.length > 0 && (
+                <span className="block text-xs text-muted">
+                  {t.gpu_names.length > 1 ? `uses the high-performance graphics card of: ${t.gpu_names.join(", ")}` : t.gpu_names[0]}
+                </span>
+              )}
+              {t.fell_back && <span className="block text-xs text-warn">The GPU didn't work, so it runs on the CPU (reason in the log).</span>}
+            </span>
+          ) : (
+            <span className="text-danger">✗ {t.error}</span>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <span className="w-28 shrink-0 text-muted">Video export</span>
+          {video ? (
+            <span>
+              <span className="text-ok">✓ works</span> on {gpuVideo ? <b>the GPU ({video})</b> : "the CPU (libx264)"}
+              <span className="block text-xs text-muted">tested with a short encode when the app started</span>
+            </span>
+          ) : (
+            <span className="text-muted">not checked yet</span>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <span className="w-28 shrink-0 text-muted">Pose model</span>
+          <span>
+            CPU <span className="text-muted">(MediaPipe has no GPU support on Windows)</span>
+          </span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Settings → Danger zone: delete every photo, after typing DELETE to confirm. */
+function DeleteAllPhotos({ count }: { count: number }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    try {
+      await post<Job>("/photos/delete-all", { confirm: "DELETE" });
+      toast.info(`Deleting ${count} photos. Progress is in the job panel.`);
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+      setOpen(false);
+      setTyped("");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="card border-danger/40 p-4">
+      <h2 className="font-medium text-danger">Danger zone</h2>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1 text-sm">
+          <div className="font-medium">Delete all photos</div>
+          <div className="text-muted">
+            Removes all {count} photos from the library, with their alignments, landmarks and close-ups. Your original files elsewhere are
+            never touched; the library's copies go to the trash folder. Pose examples, measurements and settings are kept.
+          </div>
+        </div>
+        {!open && (
+          <button className="btn btn-danger" disabled={count === 0} onClick={() => setOpen(true)}>
+            <Trash2 size={14} /> Delete all photos
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="mt-3 space-y-2 rounded-md border border-danger/40 bg-danger/5 p-3 text-sm">
+          <p>
+            This deletes <b>all {count} photos</b> from PhysiqueLapse. It can't be undone in the app. Type <b>DELETE</b> to confirm.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input className="input w-40" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="DELETE" autoFocus />
+            <button className="btn btn-danger" disabled={typed !== "DELETE" || busy} onClick={run}>
+              {busy ? <Spinner size={14} /> : <Trash2 size={14} />} Delete {count} photos
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                setOpen(false);
+                setTyped("");
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function CategoryRow({ c }: { c: Category }) {
   const { update, remove } = useCategoryMutations();
@@ -237,13 +388,8 @@ export default function Settings() {
               <div>
                 <span className="text-muted">ffmpeg:</span> <span className="font-mono text-xs">{system.ffmpeg ?? "not found"}</span>
               </div>
-              {system.acceleration &&
-                Object.entries(system.acceleration).map(([k, v]) => (
-                  <div key={k}>
-                    <span className="text-muted">{k === "clip" ? "Image model" : k === "video" ? "Video encoder" : "Pose model"}:</span> {v}
-                  </div>
-                ))}
             </div>
+            <Acceleration video={system.acceleration?.video} />
             <h3 className="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-muted">Models</h3>
             <ul className="space-y-0.5">
               {Object.entries(system.models).map(([k, m]) => (
@@ -264,6 +410,8 @@ export default function Settings() {
             </div>
           </section>
         )}
+
+        <DeleteAllPhotos count={system?.photos ?? 0} />
       </div>
     </div>
   );

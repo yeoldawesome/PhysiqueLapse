@@ -24,3 +24,7 @@ i want the ability to save a time laps like in the view, want to be able to set 
 implement person sorting system
 
 in the library i would like to filter out pepole who are like not "me" i want a button for that in the library that says "filter people" and it allows you to select photos that are of you think it goes through the rest of the photos and gives you a list of potos that are not matches and it allows you to mass select them and delete them all and also have there be a delete all button for the ones that arnt "me"
+
+
+
+create a good prompt for this project on making a webapp version, i have a home sever that i can run the computation on so i want like a webapp where i can upload the photos and then it all gets processed on my home server. i want to have like a active going one where for a pose i can have a reference photo then i can add to it by like havign a camera mode where it has an opaque image of the reference photo then i try to line it up. i also want a animation mode where like i take a photo everyday and it shows the last photo as opeque. idk if i want to fork this or what to make this new version what do you think

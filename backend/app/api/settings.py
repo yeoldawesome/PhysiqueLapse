@@ -129,6 +129,22 @@ def system_info(s: Session = Depends(get_session)) -> dict[str, Any]:
     }
 
 
+@router.get("/system/gpu-test")
+def gpu_test_result() -> dict[str, Any]:
+    """The last image-model self-test of this run (None until one ran)."""
+    from ..services import clip_backend
+
+    return {"image_model": clip_backend.test_result()}
+
+
+@router.post("/system/gpu-test")
+def gpu_test(force: bool = False) -> dict[str, Any]:
+    """Run the image model once on test pictures and report where it really ran."""
+    from ..services import clip_backend
+
+    return {"image_model": clip_backend.self_test(force=force)}
+
+
 @router.get("/system/models")
 def models_status(s: Session = Depends(get_session)) -> dict[str, Any]:
     """Which model files are missing (the desktop app downloads them on first launch)."""

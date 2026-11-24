@@ -457,3 +457,24 @@ def job_reimport_candidate(ctx: JobContext, params: dict) -> dict:
             s.add(sess)
             s.commit()
         return {"message": f"{cand.file_name}: {r.status}", "status": r.status, "photo_id": r.photo_id}
+
+
+@job("delete_all_photos", lane="io", title="Delete all photos")
+def job_delete_all_photos(ctx: JobContext, params: dict) -> dict:
+    """Settings → Delete all photos. Each photo goes the usual way (our copy of the original to
+    the trash folder, derived files and rows removed) and is forgotten, so importing the same
+    files again later works. Pose examples, measurements and settings are kept."""
+    with ctx.session() as s:
+        ids = list(s.exec(select(Photo.id).order_by(Photo.id)).all())
+    total = len(ids)
+    ctx.progress(0, total, f"Deleting {total} photos")
+    done = 0
+    for pid in ids:
+        ctx.check_cancelled()
+        with ctx.session() as s:
+            photo = s.get(Photo, pid)
+            if photo is not None:
+                delete_photo(s, photo, remember=False)
+        done += 1
+        ctx.progress(done, total, f"Deleted {done} of {total}")
+    return {"message": f"Deleted {done} photos (the originals are in the trash folder)", "deleted": done}

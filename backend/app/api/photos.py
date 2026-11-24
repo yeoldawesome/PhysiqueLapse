@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import String, cast, func, or_
 from sqlmodel import Session, select
 
@@ -344,6 +345,18 @@ def bulk(body: BulkPatch, s: Session = Depends(get_session)) -> dict[str, Any]:
         touched += 1
     s.commit()
     return {"updated": touched, "skipped": skipped}
+
+
+class DeleteAllIn(BaseModel):
+    confirm: str
+
+
+@router.post("/delete-all")
+def delete_all(body: DeleteAllIn) -> dict[str, Any]:
+    """Delete every photo in the library (as a background job). Needs confirm="DELETE"."""
+    if body.confirm != "DELETE":
+        raise HTTPException(422, 'type DELETE to confirm')
+    return job_to_dict(runner().enqueue("delete_all_photos", {}, dedupe=True))
 
 
 @router.delete("/{photo_id}")

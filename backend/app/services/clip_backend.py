@@ -298,8 +298,77 @@ def accelerator() -> str:
         return getattr(_scorer, "accelerator", "CPU")
     if onnx_usable():
         gpu = _ort_gpu_provider()
-        return f"GPU ({_GPU_PROVIDERS[gpu]}), if the driver allows" if gpu else "CPU"
+        return f"GPU ({_GPU_PROVIDERS[gpu]}), not tested yet" if gpu else "CPU"
     return "CPU (PyTorch; GPU if it has CUDA)"
+
+
+# ----------------------------------------------------------------------------- self-test
+
+_test: dict | None = None
+_test_lock = threading.Lock()
+
+
+def gpu_names() -> list[str]:
+    """The graphics cards Windows reports (for the Settings page). Empty elsewhere / on error."""
+    if os.name != "nt":
+        return []
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", "(Get-CimInstance Win32_VideoController).Name"],
+            capture_output=True, text=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).stdout
+    except Exception:
+        return []
+    return [n.strip() for n in out.splitlines() if n.strip()]
+
+
+def test_result() -> dict | None:
+    return _test
+
+
+def self_test(force: bool = False) -> dict:
+    """Load the image model exactly the way the jobs do and run it on a few test pictures, so the
+    Settings page can say where it really runs (and that it works) instead of where it might.
+    The result is kept for this run of the app; `force` runs it again."""
+    global _test
+    with _test_lock:
+        if _test is not None and not force:
+            return _test
+        wanted = "GPU" if (onnx_usable() and _ort_gpu_provider()) else "CPU"
+        if not available():
+            _test = {"ok": False, "device": "not installed", "on_gpu": False, "wanted": wanted,
+                     "error": "The image model isn't downloaded yet."}
+            return _test
+        import time
+
+        prompts = (["a photo of a person"], ["a photo of a car"])
+        imgs = [Image.new("RGB", (256, 320), (120 + 25 * i, 100, 80)) for i in range(4)]
+        try:
+            t0 = time.perf_counter()
+            sc = get_scorer()
+            sc.positive_probability(imgs[:1], *prompts)  # first run: loads the graph, caches the text
+            load_s = time.perf_counter() - t0
+            t1 = time.perf_counter()
+            p = sc.positive_probability(imgs, *prompts)
+            per = (time.perf_counter() - t1) / len(imgs)
+            ok = len(p) == len(imgs) and all(0.0 <= x <= 1.0 for x in p)
+            device = getattr(sc, "accelerator", "CPU")
+            on_gpu = device.startswith("GPU")
+            _test = {
+                "ok": ok, "device": device, "on_gpu": on_gpu, "wanted": wanted,
+                "gpu_names": gpu_names() if on_gpu or wanted == "GPU" else [],
+                "load_s": round(load_s, 1), "ms_per_image": round(per * 1000, 1),
+                "error": None if ok else "the model gave unexpected output",
+                # asked for the GPU but ended up on the CPU: the reason is in the log
+                "fell_back": wanted == "GPU" and not on_gpu,
+            }
+        except Exception as e:
+            log.warning("image model self-test failed: %s", e)
+            _test = {"ok": False, "device": accelerator(), "on_gpu": False, "wanted": wanted, "error": f"{type(e).__name__}: {e}"}
+        log.info("image model self-test: %s", _test)
+        return _test
 
 
 def set_scorer_for_tests(s: ClipScorer | None) -> None:
