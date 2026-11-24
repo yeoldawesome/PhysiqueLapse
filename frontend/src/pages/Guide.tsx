@@ -20,10 +20,10 @@ import {
   UserX,
   Wand2,
 } from "lucide-react";
-import { useCategories, useDashboard } from "../api/queries";
+import { useDashboard } from "../api/queries";
+import { useGroupingStatus } from "../api/grouping";
 import { PageHeader } from "../components/ui";
 import Tutorial from "../components/onboarding/Tutorial";
-import { useOnboarding } from "../api/onboarding";
 
 type Step = { title: string; body: ReactNode; done: boolean | null; to: string; action: string };
 
@@ -100,11 +100,9 @@ const Kbd = ({ children }: { children: ReactNode }) => <span className="kbd">{ch
 
 export default function Guide() {
   const { data: dash } = useDashboard();
-  const { data: cats = [] } = useCategories();
   const c = dash?.counts;
-  const examples = cats.reduce((n, x) => n + ((x as { label_count?: number }).label_count ?? 0), 0);
   const known = !!dash;
-  const { data: onboarding } = useOnboarding();
+  const { data: grouping } = useGroupingStatus();
   const [tour, setTour] = useState(false);
   const steps: Step[] = [
     {
@@ -115,24 +113,22 @@ export default function Guide() {
       action: "Import",
     },
     {
-      title: "Show it your poses",
+      title: "Group photos automatically",
       body: (
         <>
-          After the import the app finds your joints in every photo and keeps the ones that show your physique. Then, before anything is sorted, you pick a few of{" "}
-          <b>your own</b> photos for each pose (skip the ones you don't do). Every photo is sorted by those examples. Change them later in{" "}
-          <b>Settings → Pose examples</b>.
+          After import, the app detects body landmarks and groups photos that align closely. Groups are labeled <b>Group 1</b>, <b>Group 2</b>, and so on;
+          you do not need to name poses or choose example photos.
         </>
       ),
-      done: onboarding ? onboarding.pose_setup_done : known ? examples >= 2 : null,
-      to: "/setup",
-      action: "Pose examples",
+      done: grouping?.active ?? null,
+      to: "/grouping",
+      action: "Preview groups",
     },
     {
-      title: "Check the poses",
+      title: "Review your groups",
       body: (
         <>
-          Open <b>Library → needs review</b>. Press <b>A</b> (or ✓) to accept a photo's pose, or click a pose example at the top to move it. Every fix also teaches
-          the classifier.
+          Open the <b>Library</b> to review photos and move any into a different group. Import review items appear after processing is complete.
         </>
       ),
       done: known ? (c?.photos ?? 0) > 0 && (c?.needs_review ?? 1) === 0 : null,
@@ -143,8 +139,8 @@ export default function Guide() {
       title: "Line them up",
       body: (
         <>
-          Press <b>Align all</b> on the Dashboard (or <b>Align</b> on one pose). Each photo is moved, scaled and turned so your body lands in the same spot as the
-          pose's reference photo.
+          Press <b>Align all</b> on the Dashboard (or <b>Align</b> on one group). Each photo is moved, scaled and turned so your body lands in the same spot as
+          the group's reference photo.
         </>
       ),
       done: known ? (c?.aligned ?? 0) > 0 && (c?.alignment_stale ?? 1) === 0 : null,
@@ -198,9 +194,8 @@ export default function Guide() {
         <Section title="Every page" sub="What each item in the sidebar is for.">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <Feature icon={LayoutDashboard} title="Dashboard" to="/" action="Open Dashboard">
-              Your home screen: counts at the top (photos, date span, poses needing review, photos not of you), then a card per pose with its picture and{" "}
-              <b>View</b> / <b>Align</b> buttons. The buttons at the top run the main steps: <b>Extract landmarks</b>, <b>Classify poses</b> (new and borderline
-              photos only) and <b>Align all</b>. The <b>New pose</b> card adds your own pose.
+              Your home screen: counts at the top (photos, date span, poses needing review, photos not of you), then a card per group with its picture and{" "}
+              <b>View</b> / <b>Align</b> buttons. <b>Process everything</b> detects landmarks, groups photos automatically, and aligns each group.
             </Feature>
             <Feature icon={Images} title="Library" to="/library" action="Open Library">
               Every photo, with filters (pose, dates, source, clothing, needs review and more).
@@ -251,18 +246,16 @@ export default function Guide() {
               shoulder width, waist, V-taper, arm size and more estimated from your photos, with trend lines (in inches once you've logged a few tape measurements).
             </Feature>
             <Feature icon={SettingsIcon} title="Settings" to="/settings" action="Open Settings">
-              <b>Pose examples</b> (what the classifier learns from, with odd ones flagged orange) and <b>Reclassify all</b>; add, rename or delete poses and choose
-              how each one is aligned; plus alignment, detection and import options. Changes to your poses are kept: nothing you delete comes back.
+              Rename or delete groups and choose how each one is aligned; adjust alignment, detection, and import options.
             </Feature>
           </div>
         </Section>
 
         <Section title="Built in" sub="Things that work across the app.">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <Feature icon={Tags} title="Pose sorting">
-              Each photo goes to the pose whose examples its elbow angles, arm positions and facing direction are closest to. Left and right versions share examples
-              (mirrored), and for side selfies the bend of your shown arm decides <b>arm down</b> vs <b>arm 90</b>. Photos it isn't sure about are flagged{" "}
-              <b>needs review</b>.
+            <Feature icon={Tags} title="Automatic pose groups" to="/grouping" action="Adjust grouping">
+              Photos are grouped by how closely their shoulders, elbows, wrists, and hips line up after alignment. Groups have generic names such as <b>Group 1</b>;
+              photos without a detected body or in groups below the minimum size remain <b>Ungrouped</b>.
             </Feature>
             <Feature icon={Crosshair} title="Alignment">
               Photos are only moved, scaled and turned, never stretched, so sizes stay honest. Fine-tune any photo in the <b>alignment editor</b> (from the drawer or
@@ -270,7 +263,7 @@ export default function Guide() {
             </Feature>
             <Feature icon={Wand2} title="Abs and Face groups">
               Two extra groups across all poses: <b>Abs</b> (photos where your abs show, as aligned torso close-ups) and <b>Face</b> (your face lined up by eyes and
-              mouth). They're found automatically after Classify poses; fix any photo with the switches in its drawer.
+              mouth).               They're checked automatically; fix any photo with the switches in its drawer.
             </Feature>
             <Feature icon={Shirt} title="Sleeves check">
               Every photo is checked for clothing covering the arms, so arm time-lapses can hide sleeved photos (Viewer, exports and Library filter).
@@ -289,13 +282,13 @@ export default function Guide() {
           <div className="card divide-y divide-border/60">
             {[
               [
-                "Photos are in the wrong pose",
-                "Look at Settings → Pose examples: remove orange (look-alike) examples, add 2–3 clear ones to each pose, then press Reclassify all.",
+                "Photos are in different groups than expected",
+                "Open Group photos and adjust the strictness slider, preview the result, then apply the groups again.",
               ],
               ["A photo looks tilted after aligning", "It probably needed more turning than allowed. Raise Settings → Alignment → Rotation clamp (e.g. 25–35°) and align again, or fix that photo in the alignment editor."],
               ["A photo has the wrong date", "Open it in the Library and use change date in the drawer; select many to shift dates in bulk. Low-confidence dates are marked."],
               ["My arms look different sizes between photos", "Turn on Pose match in the Viewer to hide photos whose arms are held differently from the reference, and Hide sleeves for arm poses."],
-              ["New photos aren't sorted", "After importing press Extract landmarks, then Classify poses on the Dashboard: it only handles new and borderline photos, so it's quick."],
+              ["New photos aren't grouped", "Run Process everything from the Dashboard. When automatic upload processing is enabled, new photos are added to existing groups."],
             ].map(([q, a]) => (
               <div key={q} className="px-4 py-3 text-sm">
                 <div className="font-medium">{q}</div>

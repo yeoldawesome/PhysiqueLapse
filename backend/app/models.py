@@ -55,7 +55,7 @@ class Photo(SQLModel, table=True):
     flip_source: str = "none"  # manual|auto|none
     pose_category_id: int | None = Field(default=None, foreign_key="pose_categories.id", index=True)
     pose_confidence: float | None = None
-    pose_source: str = "none"  # rule|knn|manual|none
+    pose_source: str = "none"  # rule|knn|manual|group|none
     pose_needs_review: bool = Field(default=False, index=True)
     landmarks_status: str = Field(default="pending", index=True)  # pending|ok|none|failed
     landmarks_quality: float | None = None

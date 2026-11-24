@@ -16,6 +16,7 @@ from ..jobs import job_to_dict, runner
 from ..models import ImportCandidate, ImportSession
 from ..schemas import PathIn, session_out
 from ..services import snapchat_zip as SZ
+from ..settings import save_settings
 
 router = APIRouter(prefix="/snapchat", tags=["snapchat"])
 
@@ -40,13 +41,16 @@ def _out(s: Session, sess: ImportSession) -> dict[str, Any]:
     o["zips"] = zips
     st = SZ.staging_dir(sess.id)
     o["staging_bytes"] = sum(p.stat().st_size for p in st.rglob("*") if p.is_file()) if st.exists() else 0
-    o["decisions"] = dict(
+    decisions = dict(
         s.exec(
             select(ImportCandidate.decision, func.count(ImportCandidate.id))
             .where(ImportCandidate.session_id == sess.id)
             .group_by(ImportCandidate.decision)
         ).all()
     )
+    if sess.status in ("queued", "running"):
+        decisions.pop("review", None)
+    o["decisions"] = decisions
     return o
 
 
@@ -174,7 +178,11 @@ def start(sid: int, s: Session = Depends(get_session)) -> dict[str, Any]:
     if missing:
         raise HTTPException(410, f"zip files are gone: {', '.join(missing)}")
     sess.status = "queued"
+    opts = dict(sess.options or {})
+    opts["auto_pipeline"] = True
+    sess.options = opts
     s.add(sess)
+    save_settings(s, {"pose_setup_done": True, "pose_setup_skipped": []})
     s.commit()
     j = runner().enqueue("snapchat_zip_import", {"session_id": sid}, dedupe=True)
     sess.job_id = j.id

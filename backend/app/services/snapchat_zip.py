@@ -26,7 +26,7 @@ from pathlib import Path, PurePosixPath
 from .. import config
 from ..fsutil import replace_retry
 from ..jobs import JobContext, job
-from ..models import ImportSession
+from ..models import ImportSession, now
 from . import images
 
 log = logging.getLogger(__name__)
@@ -160,7 +160,34 @@ def zip_summary(path: Path) -> dict:
 def job_snapchat_zips(ctx: JobContext, params: dict) -> dict:
     sid = int(params["session_id"])
     try:
-        return _run(ctx, sid)
+        result = _run(ctx, sid)
+        with ctx.session() as s:
+            sess = s.get(ImportSession, sid)
+            opts = dict(sess.options or {}) if sess is not None else {}
+        if opts.get("auto_pipeline"):
+            from .align import job_align
+            from .grouping import job_group
+            from .landmarks import job_extract_landmarks
+
+            ctx.message("Extracting pose landmarks")
+            job_extract_landmarks(ctx, {})
+            ctx.message("Grouping photos by pose")
+            job_group(ctx, {})
+            ctx.message("Aligning photos")
+            job_align(ctx, {"force": True})
+            with ctx.session() as s:
+                sess = s.get(ImportSession, sid)
+                if sess is not None:
+                    sess.status = "done"
+                    sess.finished_at = now()
+                    s.add(sess)
+                    s.commit()
+            counts = result.get("counts", {})
+            result["message"] = (
+                f"Snapchat import and processing complete: {counts.get('accepted', 0)} imported, "
+                f"{counts.get('review', 0)} ready for review, {counts.get('rejected', 0)} filtered out"
+            )
+        return result
     except BaseException:
         with ctx.session() as s:
             sess = s.get(ImportSession, sid)
@@ -215,7 +242,7 @@ def _run(ctx: JobContext, sid: int) -> dict:
     # hand over to the regular Snapchat import (scan, date matching, scoring, review)
     from .snapchat import job_snapchat
 
-    return job_snapchat(ctx, {"session_id": sid})
+    return job_snapchat(ctx, {"session_id": sid, "defer_completion": bool(opts.get("auto_pipeline"))})
 
 
 def delete_staging(session_id: int) -> int:

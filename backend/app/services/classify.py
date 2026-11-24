@@ -366,6 +366,15 @@ def job_classify(ctx: JobContext, params: dict) -> dict:
     force = bool(params.get("force"))
     with ctx.session() as s:
         settings = load_settings(s)
+        if settings.grouping_active:
+            from .grouping import assign_new
+
+            counts = assign_new(s, ids)
+            _queue_abs_check()
+            return {
+                "message": f"Grouped {counts['grouped']} new photos; {counts['ungrouped']} left ungrouped",
+                **counts,
+            }
         cats = s.exec(select(PoseCategory)).all()
         cats_by_key = {c.rule_key: c.id for c in cats if c.rule_key}
         # set by hand or captured for a chosen pose: never reclassified

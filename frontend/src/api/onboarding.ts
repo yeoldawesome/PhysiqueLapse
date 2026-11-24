@@ -3,7 +3,7 @@ import { get, patch, post } from "./client";
 import type { Job } from "./types";
 import { toast } from "../lib/toast";
 
-export type OnboardingStage = "import" | "prepare" | "poses" | "done";
+export type OnboardingStage = "import" | "prepare" | "group" | "done";
 
 export interface OnboardingStatus {
   stage: OnboardingStage;

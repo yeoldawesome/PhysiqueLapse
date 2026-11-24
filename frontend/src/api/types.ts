@@ -3,7 +3,7 @@
 export type DateSource = "exif" | "snapchat_metadata" | "filename" | "file_mtime" | "manual" | "none";
 export type Confidence = "high" | "medium" | "low";
 export type LandmarkStatus = "pending" | "ok" | "none" | "failed";
-export type PoseSource = "rule" | "knn" | "manual" | "none";
+export type PoseSource = "rule" | "knn" | "manual" | "group" | "none";
 
 export interface AlignmentInfo {
   photo_id: number;
@@ -204,6 +204,9 @@ export interface Settings {
   playback_crossfade: boolean;
   skip_near_duplicates: boolean;
   auto_process_uploads: boolean | null;
+  grouping_active: boolean;
+  grouping_threshold: number;
+  grouping_min_size: number;
 }
 
 export interface SystemInfo {

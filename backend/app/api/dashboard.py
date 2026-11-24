@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ..db import get_session
-from ..models import Alignment, ImportCandidate, Job, Metric, MetricEntry, Photo, PoseCategory
+from ..models import Alignment, ImportCandidate, ImportSession, Job, Metric, MetricEntry, Photo, PoseCategory
 from ..schemas import category_out, photo_out
 from ..services.people import summary as people_summary
 from .abs import summary as abs_summary
@@ -53,6 +53,7 @@ def dashboard(s: Session = Depends(get_session)) -> dict[str, Any]:
     cats = s.exec(select(PoseCategory).order_by(PoseCategory.sort_order, PoseCategory.id)).all()
     first, last = s.exec(select(func.min(Photo.taken_at), func.max(Photo.taken_at))).one()
     latest = s.exec(select(Photo).order_by(Photo.created_at.desc(), Photo.id.desc()).limit(8)).all()
+    active_imports = select(ImportSession.id).where(ImportSession.status.in_(("queued", "running")))
     counts = {
         "photos": total,
         "unassigned": per_pose.get(None, 0),
@@ -63,7 +64,12 @@ def dashboard(s: Session = Depends(get_session)) -> dict[str, Any]:
         "landmarks_missing": s.exec(select(func.count(Photo.id)).where(Photo.landmarks_status.in_(("none", "failed")))).one(),
         "aligned": s.exec(select(func.count(Alignment.photo_id)).where(Alignment.stale == False)).one(),  # noqa: E712
         "alignment_stale": s.exec(select(func.count(Alignment.photo_id)).where(Alignment.stale == True)).one(),  # noqa: E712
-        "review_queue": s.exec(select(func.count(ImportCandidate.id)).where(ImportCandidate.decision == "review")).one(),
+        "review_queue": s.exec(
+            select(func.count(ImportCandidate.id)).where(
+                ImportCandidate.decision == "review",
+                ImportCandidate.session_id.is_(None) | ~ImportCandidate.session_id.in_(active_imports),
+            )
+        ).one(),
         "active_jobs": s.exec(select(func.count(Job.id)).where(Job.status.in_(("queued", "running")))).one(),
         "excluded": s.exec(select(func.count(Photo.id)).where(Photo.excluded == True)).one(),  # noqa: E712
     }

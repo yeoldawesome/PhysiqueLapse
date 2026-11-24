@@ -377,18 +377,19 @@ def job_ingest_upload(ctx: JobContext, params: dict) -> dict:
         for it in s.exec(select(UploadItem).where(UploadItem.session_id == session_id)).all():
             s.delete(it)
         s.commit()
-        auto = auto_process_enabled(load_settings(s))
+        settings = load_settings(s)
+        auto = auto_process_enabled(settings)
+        grouping_active = settings.grouping_active
         from .onboarding import pose_setup_done
 
         setup_done = pose_setup_done(s)
     ids = result.get("photo_ids") or []
-    if ids and not setup_done:
-        # first import: find the joints now, but sort nothing until the user has shown their poses
-        result["chain"] = [{"type": "extract_landmarks", "params": {"ids": ids}}, {"type": "pose_setup_prepare", "params": {}}]
-        result["message"] += ". Getting them ready for your pose examples"
-    elif auto and ids:
-        result["chain"] = processing_chain(ids)
+    if ids and auto:
+        result["chain"] = processing_chain(ids, grouping_active)
         result["message"] += ". Processing the new photos next"
+    elif ids and not setup_done:
+        result["chain"] = [{"type": "extract_landmarks", "params": {"ids": ids}}]
+        result["message"] += ". Finding body landmarks before grouping"
     return result
 
 
@@ -397,13 +398,20 @@ def auto_process_enabled(settings: AppSettings) -> bool:
     return bool(settings.auto_process_uploads)
 
 
-def processing_chain(ids: list[int]) -> list[dict]:
-    """Jobs that take new photos from 'imported' to 'aligned in their pose', in order."""
-    return [
-        {"type": "extract_landmarks", "params": {"ids": ids}},
-        {"type": "classify_poses", "params": {"ids": ids}},
-        {"type": "align_photos", "params": {"ids": ids}},
-    ]
+def processing_chain(ids: list[int], grouping_active: bool) -> list[dict]:
+    """Prepare new photos, then either add them to existing groups or group the library."""
+    jobs = [{"type": "extract_landmarks", "params": {"ids": ids}}]
+    if grouping_active:
+        jobs.extend([
+            {"type": "classify_poses", "params": {"ids": ids}},
+            {"type": "align_photos", "params": {"ids": ids}},
+        ])
+    else:
+        jobs.extend([
+            {"type": "group_poses", "params": {}},
+            {"type": "align_photos", "params": {"force": True}},
+        ])
+    return jobs
 
 
 @job("ingest_folder", lane="io", title="Import folder")
@@ -422,11 +430,18 @@ def job_ingest_folder(ctx: JobContext, params: dict) -> dict:
     result = run_ingest_session(ctx, session_id, files=files, source="folder", move=False)
     ids = result.get("photo_ids") or []
     with ctx.session() as s:
+        settings = load_settings(s)
+        auto = auto_process_enabled(settings)
+        grouping_active = settings.grouping_active
         from .onboarding import pose_setup_done
 
-        if ids and not pose_setup_done(s):
-            result["chain"] = [{"type": "extract_landmarks", "params": {"ids": ids}}, {"type": "pose_setup_prepare", "params": {}}]
-            result["message"] += ". Getting them ready for your pose examples"
+        setup_done = pose_setup_done(s)
+        if ids and auto:
+            result["chain"] = processing_chain(ids, grouping_active)
+            result["message"] += ". Processing the new photos next"
+        elif ids and not setup_done:
+            result["chain"] = [{"type": "extract_landmarks", "params": {"ids": ids}}]
+            result["message"] += ". Finding body landmarks before grouping"
     return result
 
 
@@ -463,7 +478,7 @@ def job_reimport_candidate(ctx: JobContext, params: dict) -> dict:
 def job_delete_all_photos(ctx: JobContext, params: dict) -> dict:
     """Settings → Delete all photos. Each photo goes the usual way (our copy of the original to
     the trash folder, derived files and rows removed) and is forgotten, so importing the same
-    files again later works. Pose examples, measurements and settings are kept."""
+    files again later works. Group settings, measurements and app settings are kept."""
     with ctx.session() as s:
         ids = list(s.exec(select(Photo.id).order_by(Photo.id)).all())
     total = len(ids)

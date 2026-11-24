@@ -99,37 +99,38 @@ export default function Import() {
 
   return (
     <div>
-      <PageHeader title="Import" subtitle="Originals are copied into the app's data folder. Your source files are never changed." />
+      <PageHeader title="Import" subtitle="Upload a zip or folder, then PhysiqueLapse extracts photos, finds poses and aligns them automatically." />
       <div className="flex max-w-5xl flex-col gap-4 p-3 md:p-6">
-        <Uploader />
+        <SnapchatImport />
 
-        <div className="card p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <FolderInput size={16} className="text-accent" />
-            <h2 className="font-medium">Add a folder by path</h2>
-            <span className="text-xs text-muted">faster for thousands of files; the app reads the folder directly</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              className="input w-full min-w-0 flex-1 font-mono text-xs md:min-w-[320px]"
-              placeholder="C:\Users\you\Pictures\Progress"
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") importFolder();
-              }}
-            />
-            <button className="btn" onClick={() => setPicker(true)}>
-              <FolderSearch size={14} /> Browse
-            </button>
-            <Toggle checked={recursive} onChange={setRecursive} label="include subfolders" />
-            <button className="btn btn-primary" disabled={!path.trim() || busy} onClick={importFolder}>
-              Import folder
-            </button>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Uploader />
+          <div className="card p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <FolderInput size={16} className="text-accent" />
+              <h2 className="font-medium">Add a folder by path</h2>
+            </div>
+            <p className="mb-3 text-xs text-muted">Faster for thousands of local photos.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                className="input w-full font-mono text-xs"
+                placeholder="C:\Users\you\Pictures\Progress"
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") importFolder();
+                }}
+              />
+              <button className="btn" onClick={() => setPicker(true)}>
+                <FolderSearch size={14} /> Browse
+              </button>
+              <Toggle checked={recursive} onChange={setRecursive} label="include subfolders" />
+              <button className="btn btn-primary" disabled={!path.trim() || busy} onClick={importFolder}>
+                Import folder
+              </button>
+            </div>
           </div>
         </div>
-
-        <SnapchatImport />
 
         <div className="card">
           <div className="border-b border-border px-4 py-2 text-sm font-medium">Import history</div>

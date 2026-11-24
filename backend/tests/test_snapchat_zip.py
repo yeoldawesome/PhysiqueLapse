@@ -1,9 +1,11 @@
 """Snapchat zips: upload + add-by-path, selective unpack (photos only, nested zips), filter, cleanup."""
 
 import io
+import threading
 import zipfile
 from pathlib import Path
 
+from app.services import grouping
 from app.services.clip_backend import set_scorer_for_tests
 from app.services.pose_backend import set_backend_for_tests
 from tests.test_snapchat import FakeScorer, NoPeople, _wait, make_export
@@ -66,6 +68,7 @@ def test_zip_upload_and_path_import(client, tmp_path):
         c = j["result"]["counts"]
         assert c["images"] == 6  # 5 loose + 1 from the nested zip; overlays and the video were never extracted
         assert c["accepted"] == 1 and c["review"] == 3 and c["rejected"] == 2  # 0.65*0.95 = .6175 >= .6
+        assert client.get("/api/grouping").json()["active"]
 
         out = client.get(f"/api/snapchat/zip-session/{sid}").json()
         assert out["status"] == "done" and all(z["extracted"] for z in out["zips"])
@@ -113,5 +116,42 @@ def test_failed_zip_import_can_be_resumed(client, tmp_path):
         j = _wait(client, r.json()["job"]["id"])
         assert j["status"] == "done" and j["result"]["counts"]["images"] == 2
     finally:
+        set_scorer_for_tests(None)
+        set_backend_for_tests(None, key=None)
+
+
+def test_zip_review_queue_waits_until_processing_finishes(client, tmp_path, monkeypatch):
+    z1, _ = build_zips(tmp_path)
+    set_scorer_for_tests(FakeScorer())
+    set_backend_for_tests(NoPeople(), key="heavy")
+    entered = threading.Event()
+    release = threading.Event()
+    original = grouping.job_group
+
+    def pause_before_processing(ctx, params):
+        entered.set()
+        if not release.wait(10):
+            raise RuntimeError("test timed out waiting to resume grouping")
+        return original(ctx, params)
+
+    monkeypatch.setattr(grouping, "job_group", pause_before_processing)
+    try:
+        client.put("/api/settings", json={"timezone": "UTC", "filter_accept": 0.6})
+        sid = client.post("/api/snapchat/zip-session").json()["id"]
+        assert client.post(f"/api/snapchat/zip-session/{sid}/add-path", json={"path": str(z1)}).status_code == 200
+        started = client.post(f"/api/snapchat/zip-session/{sid}/start")
+        assert started.status_code == 200
+        assert entered.wait(10), "pose processing did not start"
+
+        assert client.get("/api/review").json()["total"] == 0
+        assert client.get("/api/dashboard").json()["counts"]["review_queue"] == 0
+        assert "review" not in client.get(f"/api/snapchat/zip-session/{sid}").json()["decisions"]
+
+        release.set()
+        result = _wait(client, started.json()["job"]["id"])
+        assert result["status"] == "done", result
+        assert client.get("/api/review").json()["total"] == result["result"]["counts"]["review"]
+    finally:
+        release.set()
         set_scorer_for_tests(None)
         set_backend_for_tests(None, key=None)

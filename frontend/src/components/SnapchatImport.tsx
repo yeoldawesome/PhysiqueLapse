@@ -206,7 +206,7 @@ export default function SnapchatImport() {
     setBusy(true);
     try {
       const r = await post<{ job: Job }>(`/snapchat/zip-session/${sid}/start`);
-      toast.info(`Unpacking and filtering (job #${r.job.id}). You can leave this page.`);
+      toast.info(`Processing started: unzip, poses, groups and alignment (job #${r.job.id}).`);
       qc.invalidateQueries({ queryKey: ["jobs"] });
       refresh();
     } catch (e) {
@@ -228,16 +228,15 @@ export default function SnapchatImport() {
     <div className="card p-4">
       <div className="mb-1 flex items-center gap-2">
         <Ghost size={16} className="text-accent" />
-        <h2 className="font-medium">Snapchat Memories</h2>
+        <h2 className="font-medium">Upload an export</h2>
       </div>
       <p className="mb-3 text-xs text-muted">
-        Add every zip from your Snapchat data download. Only photos are unpacked (videos and caption overlays are skipped), then each photo is
-        scored by an image model plus a body-pose check. Clear physique photos are imported with their Snapchat date, clear non-physique photos are
-        dropped and never copied, and anything in between goes to the{" "}
+        Upload your Snapchat data-download zips. PhysiqueLapse unpacks them, filters physique photos, extracts landmarks, groups poses and aligns
+        everything automatically. Uncertain Snapchat photos go to the{" "}
         <Link to="/review" className="underline">
           review queue
         </Link>
-        .
+        if needed.
       </p>
 
       {open && (
@@ -345,7 +344,7 @@ export default function SnapchatImport() {
               {!zips.some((z) => z.has_metadata) && " No memories_history.json yet: dates will come from file names (add the zip that contains it if you have it)."}
             </span>
             <button className="btn btn-primary ml-auto" disabled={busy || uploading} onClick={start}>
-              <Play size={14} /> Unpack and filter
+              <Play size={14} /> Upload and process everything
             </button>
           </div>
         </div>

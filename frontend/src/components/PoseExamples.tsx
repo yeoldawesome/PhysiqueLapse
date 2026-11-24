@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { Category } from "../api/types";
 
-/** One example photo (the reference) per pose, shown above the needs-review list.
- *  Clicking an example assigns that pose to the selected photo(s). */
+/** One reference photo per group, shown above the needs-review list.
+ *  Clicking a reference assigns that group to the selected photo(s). */
 export default function PoseExamples({
   categories,
   selectedCount,
@@ -33,11 +33,11 @@ export default function PoseExamples({
     <div className="card mb-4">
       <button className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-sm font-medium" onClick={() => setShown((v) => !v)}>
         {shown ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        Pose examples
+        Group references
         <span className="ml-2 text-xs font-normal text-muted">
           {selectedCount
-            ? `click an example to move the ${selectedCount === 1 ? "selected photo" : `${selectedCount} selected photos`} to that pose`
-            : "select a photo, then click an example to move it to that pose · press A or ✓ to accept the pose it has"}
+            ? `click a reference to move the ${selectedCount === 1 ? "selected photo" : `${selectedCount} selected photos`} to that group`
+            : "select a photo, then click a reference to move it to that group · press A or ✓ to accept its current group"}
         </span>
       </button>
       {shown && (

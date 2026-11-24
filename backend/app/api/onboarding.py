@@ -1,4 +1,4 @@
-"""First-run tutorial and the "teach your poses" step (see services/onboarding.py)."""
+"""First-run tutorial and automatic pose grouping status."""
 
 from __future__ import annotations
 
@@ -49,11 +49,11 @@ def _active(s: Session, types: tuple[str, ...]) -> Job | None:
 
 @router.post("/prepare")
 def prepare(s: Session = Depends(get_session)) -> dict[str, Any]:
-    """Find the joints in every photo, then read their poses. Idempotent while it runs."""
-    running = _active(s, ("extract_landmarks", "pose_setup_prepare"))
+    """Find body landmarks before previewing automatic pose groups."""
+    running = _active(s, ("extract_landmarks",))
     if running is not None:
         return {"job": job_to_dict(running)}
-    j = runner().enqueue_chain([("extract_landmarks", {}), ("pose_setup_prepare", {})])
+    j = runner().enqueue_chain([("extract_landmarks", {})])
     return {"job": job_to_dict(j)}
 
 
@@ -72,7 +72,19 @@ def pose_candidates(cid: int, limit: int = O.MAX_CANDIDATES, s: Session = Depend
 
 @router.post("/finish")
 def finish(body: FinishIn, s: Session = Depends(get_session)) -> dict[str, Any]:
-    """Pose examples done: sort every photo into its pose, then line them up."""
-    save_settings(s, {"pose_setup_done": True, "pose_setup_skipped": body.skipped})
-    j = runner().enqueue_chain([("classify_poses", {"force": True}), ("align_photos", {})])
+    """Compatibility endpoint: group all photos, then align each group."""
+    save_settings(s, {"pose_setup_done": True, "pose_setup_skipped": []})
+    j = runner().enqueue_chain([("group_poses", {}), ("align_photos", {"force": True})])
+    return {"job": job_to_dict(j), "status": O.status(s)}
+
+
+@router.post("/process-all")
+def process_all(s: Session = Depends(get_session)) -> dict[str, Any]:
+    """One-click workflow: find body landmarks, group poses, then align every photo."""
+    save_settings(s, {"pose_setup_skipped": []})
+    j = runner().enqueue_chain([
+        ("extract_landmarks", {"force": True}),
+        ("group_poses", {}),
+        ("align_photos", {"force": True}),
+    ])
     return {"job": job_to_dict(j), "status": O.status(s)}

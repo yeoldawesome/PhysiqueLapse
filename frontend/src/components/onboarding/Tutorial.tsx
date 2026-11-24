@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { ArrowLeft, ArrowRight, Crosshair, Film, Hand, ListChecks, Lock, Sparkles, Upload, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Crosshair, Film, Layers, ListChecks, Lock, Sparkles, Upload, type LucideIcon } from "lucide-react";
 import { useOnboardingMutations } from "../../api/onboarding";
 
 type Slide = { icon: LucideIcon; title: string; body: ReactNode };
@@ -11,8 +11,7 @@ const SLIDES: Slide[] = [
     title: "Welcome to PhysiqueLapse",
     body: (
       <>
-        Turn years of progress photos into one lined-up time-lapse. The app sorts your photos by pose, lines every photo up so your body stays in the same spot,
-        and plays them in date order so you can see the change.
+        Turn years of progress photos into one lined-up time-lapse. The app groups similar poses automatically, lines up each group, and plays photos in date order.
       </>
     ),
   },
@@ -27,12 +26,12 @@ const SLIDES: Slide[] = [
     ),
   },
   {
-    icon: Hand,
-    title: "2. Show it your poses",
+    icon: Layers,
+    title: "2. Group photos automatically",
     body: (
       <>
-        Everyone's front double biceps looks a little different. Before anything is sorted, you pick a few of <b>your own</b> photos for each pose. Don't do a
-        pose? Skip it. Your picks are what the app sorts every other photo by.
+        The app compares how your body landmarks line up and creates unlabeled groups such as <b>Group 1</b> and <b>Group 2</b>. You don't need to name poses or
+        choose example photos.
       </>
     ),
   },
@@ -41,15 +40,14 @@ const SLIDES: Slide[] = [
     title: "3. Check what it sorted",
     body: (
       <>
-        Photos it isn't sure about land in <b>Library → needs review</b>. Accept with <span className="kbd">A</span> or move them to the right pose; every fix makes
-        the sorting better.
+        Review photos in <b>Library</b> and move any that belong in a different group. Items from an import only appear in the review queue after processing finishes.
       </>
     ),
   },
   {
     icon: Crosshair,
     title: "4. Line them up",
-    body: <>Each pose has a reference photo. Every other photo is moved, scaled and turned so your shoulders, elbows and hips land where the reference has them.</>,
+    body: <>Each group has a reference photo. Every other photo is moved, scaled and turned so your shoulders, elbows and hips land where the reference has them.</>,
   },
   {
     icon: Film,

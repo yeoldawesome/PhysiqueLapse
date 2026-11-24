@@ -1,61 +1,10 @@
 import { Link } from "react-router";
-import { useState, type ReactNode } from "react";
-import { useNavigate } from "react-router";
-import { Bone, Crosshair, ImageOff, Plus, Tags } from "lucide-react";
-import { useCategoryMutations, useDashboard, useRunJob } from "../api/queries";
+import { type ReactNode } from "react";
+import { Bone, Crosshair, ImageOff, Layers, Sparkles } from "lucide-react";
+import { useDashboard, useRunJob } from "../api/queries";
 import PoseActions from "../components/PoseActions";
 import { Empty, PageHeader, Spinner, Stat } from "../components/ui";
 import { daysBetween, fmtDate } from "../lib/format";
-
-/** The last card in the grid: name a new pose, then go and give it examples. */
-function NewPoseCard() {
-  const { create } = useCategoryMutations();
-  const navigate = useNavigate();
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState("");
-  const add = () => {
-    const n = name.trim();
-    if (!n) return;
-    create.mutate({ name: n }, { onSuccess: (c) => navigate(`/settings#pose-${c.id}`) });
-  };
-  if (!editing) {
-    return (
-      <button
-        className="card flex min-h-[16rem] flex-col items-center justify-center gap-2 border-dashed text-muted transition-colors hover:border-accent hover:text-text"
-        onClick={() => setEditing(true)}
-        title="add your own pose, e.g. Most Muscular"
-      >
-        <Plus size={28} />
-        <span className="text-sm font-medium">New pose</span>
-      </button>
-    );
-  }
-  return (
-    <div className="card flex min-h-[16rem] flex-col justify-center gap-2 border-dashed p-3">
-      <div className="text-sm font-medium">New pose</div>
-      <input
-        className="input"
-        autoFocus
-        placeholder="name, e.g. Most Muscular"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") add();
-          if (e.key === "Escape") setEditing(false);
-        }}
-      />
-      <div className="text-[11px] text-muted">Next you add a few example photos of it; photos that look like them go here.</div>
-      <div className="flex gap-1.5">
-        <button className="btn btn-sm btn-primary flex-1 justify-center" disabled={!name.trim() || create.isPending} onClick={add}>
-          Add
-        </button>
-        <button className="btn btn-sm flex-1 justify-center" onClick={() => setEditing(false)}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
 
 /** A pose on the home page: its picture first, then the name, then View / Align. */
 function PoseCard({ to, image, flip, name, sub, children }: { to: string; image: string | null; flip?: boolean; name: string; sub: string; children: ReactNode }) {
@@ -106,13 +55,16 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader title="Dashboard" subtitle={<Link to="/guide" className="hover:underline">New here? See how it works →</Link>}>
+        <button className="btn btn-primary" onClick={() => run.mutate({ path: "/onboarding/process-all" })} title="extract landmarks, group poses and align all photos">
+          <Sparkles size={14} /> Process everything
+        </button>
         <button className="btn" onClick={() => run.mutate({ path: "/landmarks/extract" })} title="detect body landmarks for photos that do not have them yet">
           <Bone size={14} /> Extract landmarks
           {c.landmarks_pending > 0 && <span className="badge bg-accent-2/20 text-accent">{c.landmarks_pending}</span>}
         </button>
-        <button className="btn" onClick={() => run.mutate({ path: "/poses/classify" })} title="classify new photos and re-check borderline ones (Settings has Reclassify all)">
-          <Tags size={14} /> Classify poses
-        </button>
+        <Link className="btn" to="/grouping" title="preview and create automatic pose groups">
+          <Layers size={14} /> Group photos
+        </Link>
         <button className="btn" onClick={() => run.mutate({ path: "/poses/align-all" })} title="align every category against its reference">
           <Crosshair size={14} /> Align all
         </button>
@@ -213,9 +165,9 @@ export default function Dashboard() {
         )}
 
         <div>
-          <div className="mb-2 text-sm font-medium">Poses</div>
+          <div className="mb-2 text-sm font-medium">Photo groups</div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-            {data.categories.map((cat) => (
+            {data.categories.filter((cat) => cat.photo_count > 0).map((cat) => (
               <PoseCard
                 key={cat.id}
                 to={`/library?pose_id=${cat.id}`}
@@ -225,14 +177,14 @@ export default function Dashboard() {
                 sub={`${cat.photo_count} photo${cat.photo_count === 1 ? "" : "s"}${cat.photo_count && !cat.reference_photo_id ? " · no reference" : ""}`}
               >
                 <PoseActions poseId={cat.id} photoCount={cat.photo_count} hasReference={!!cat.reference_photo_id} stretch />
-                {cat.photo_count === 0 && (
-                  <Link to={`/settings#pose-${cat.id}`} className="mt-1.5 block text-center text-xs text-accent hover:underline">
-                    add examples so photos land here →
-                  </Link>
-                )}
               </PoseCard>
             ))}
-            <NewPoseCard />
+            {data.categories.every((cat) => cat.photo_count === 0) && (
+              <Link to="/grouping" className="card flex min-h-[16rem] flex-col items-center justify-center gap-2 border-dashed text-sm text-muted hover:border-accent hover:text-text">
+                <Layers size={28} />
+                <span>Preview automatic groups</span>
+              </Link>
+            )}
             {(["abs", "face"] as const).map((g) => (
               <PoseCard
                 key={g}

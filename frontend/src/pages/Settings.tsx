@@ -4,7 +4,6 @@ import { useCategories, useCategoryMutations, useSaveSettings, useSettings, useS
 import type { Category, Settings as S } from "../api/types";
 import { ConfirmButton, Field, PageHeader, Spinner, Toggle } from "../components/ui";
 import { fmtBytes } from "../lib/format";
-import PoseTeaching from "../components/PoseTeaching";
 import { post } from "../api/client";
 import type { Job } from "../api/types";
 import { useQueryClient } from "@tanstack/react-query";
@@ -122,7 +121,7 @@ function DeleteAllPhotos({ count }: { count: number }) {
           <div className="font-medium">Delete all photos</div>
           <div className="text-muted">
             Removes all {count} photos from the library, with their alignments, landmarks and close-ups. Your original files elsewhere are
-            never touched; the library's copies go to the trash folder. Pose examples, measurements and settings are kept.
+            never touched; the library's copies go to the trash folder. Group names, measurements and settings are kept.
           </div>
         </div>
         {!open && (
@@ -267,10 +266,8 @@ export default function Settings() {
         </button>
       </PageHeader>
       <div className="flex max-w-6xl flex-col gap-6 p-3 md:p-6">
-        <PoseTeaching />
-
         <section className="card p-4">
-          <h2 className="mb-3 font-medium">Pose categories</h2>
+          <h2 className="mb-3 font-medium">Groups and alignment</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted">
@@ -295,7 +292,7 @@ export default function Settings() {
           <div className="mt-3 flex gap-2">
             <input
               className="input w-full md:w-64"
-              placeholder="new category, e.g. Most Muscular"
+              placeholder="new group name"
               value={newCat}
               onChange={(e) => setNewCat(e.target.value)}
               onKeyDown={(e) => {

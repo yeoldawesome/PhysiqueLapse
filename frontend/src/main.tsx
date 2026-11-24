@@ -15,6 +15,7 @@ import Editor from "./pages/Editor";
 import People from "./pages/People";
 import Guide from "./pages/Guide";
 import PoseSetup from "./pages/PoseSetup";
+import Grouping from "./pages/Grouping";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,6 +35,7 @@ const router = createBrowserRouter([
       { path: "people", element: <People /> },
       { path: "guide", element: <Guide /> },
       { path: "setup", element: <PoseSetup /> },
+      { path: "grouping", element: <Grouping /> },
       { path: "viewer", element: <Viewer /> },
       { path: "editor/:photoId", element: <Editor /> },
       { path: "stats", element: <Stats /> },

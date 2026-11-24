@@ -75,13 +75,16 @@ class AppSettings(BaseModel):
     playback_crossfade: bool = True
     # import
     skip_near_duplicates: bool = True
-    # after a browser upload: landmarks -> classify -> align the new photos
+    # after a browser upload: landmarks -> group -> align the new photos
     auto_process_uploads: bool | None = None
-    # first run: the tutorial was closed; the "teach your poses" step was finished, and which
-    # poses the user skipped there (no example of that pose)
+    # first run: the tutorial was closed and photos have been processed
     tutorial_seen: bool = False
     pose_setup_done: bool = False
     pose_setup_skipped: list[int] = Field(default_factory=list)
+    # automatic unlabeled pose groups
+    grouping_active: bool = False
+    grouping_threshold: float = Field(0.15, ge=0.02, le=0.6)
+    grouping_min_size: int = Field(3, ge=1, le=50)
 
 
 RESERVED_KEYS = {"schema_version"}

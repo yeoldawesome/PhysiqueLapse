@@ -81,6 +81,7 @@ export const POSE_SOURCE_LABEL: Record<string, string> = {
   rule: "rule",
   knn: "kNN",
   manual: "manual",
+  group: "automatic group",
   none: "",
 };
 

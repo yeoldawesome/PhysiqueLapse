@@ -224,7 +224,7 @@ def _score_batch(cands: list[ImportCandidate], settings: AppSettings) -> None:
 def job_snapchat(ctx: JobContext, params: dict) -> dict:
     sid = int(params["session_id"])
     try:
-        return _run_import(ctx, sid)
+        return _run_import(ctx, sid, defer_completion=bool(params.get("defer_completion")))
     except BaseException:
         with ctx.session() as s:
             sess = s.get(ImportSession, sid)
@@ -235,7 +235,7 @@ def job_snapchat(ctx: JobContext, params: dict) -> dict:
         raise
 
 
-def _run_import(ctx: JobContext, sid: int) -> dict:
+def _run_import(ctx: JobContext, sid: int, *, defer_completion: bool = False) -> dict:
     with ctx.session() as s:
         sess = s.get(ImportSession, sid)
         root = Path(sess.root_path)
@@ -337,8 +337,9 @@ def _run_import(ctx: JobContext, sid: int) -> dict:
         )
         sess = s.get(ImportSession, sid)
         sess.counts = counts
-        sess.status = "done"
-        sess.finished_at = now()
+        if not defer_completion:
+            sess.status = "done"
+            sess.finished_at = now()
         s.add(sess)
         s.commit()
     msg = f"Snapchat: {counts['accepted']} imported, {counts['review']} to review, {counts['rejected']} rejected"

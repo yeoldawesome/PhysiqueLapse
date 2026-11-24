@@ -333,7 +333,7 @@ def get_import(session_id: int, s: Session = Depends(get_session)) -> dict[str, 
         .where(ImportCandidate.session_id == session_id)
         .group_by(ImportCandidate.decision)
     ).all()
-    out["decisions"] = {d: n for d, n in rows}
+    out["decisions"] = {d: n for d, n in rows if not (d == "review" and sess.status in ("queued", "running"))}
     return out
 
 
@@ -349,6 +349,10 @@ def list_candidates(
 
     stmt = select(ImportCandidate).where(ImportCandidate.session_id == session_id)
     cnt = select(func.count(ImportCandidate.id)).where(ImportCandidate.session_id == session_id)
+    sess = s.get(ImportSession, session_id)
+    if sess is not None and sess.status in ("queued", "running"):
+        stmt = stmt.where(ImportCandidate.decision != "review")
+        cnt = cnt.where(ImportCandidate.decision != "review")
     if decision:
         decs = decision.split(",")
         stmt = stmt.where(ImportCandidate.decision.in_(decs))

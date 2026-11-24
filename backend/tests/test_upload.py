@@ -120,15 +120,15 @@ def test_heic_upload_keeps_exif_date_and_serves_jpeg(client, tmp_path):
     assert im.getexif().get_ifd(0x8769).get(0x9003) == "2025:06:07 08:09:10"
 
 
-def test_auto_process_chains_landmarks_classify_align(client):
-    """With auto-processing on, the new photos (only those) go landmarks -> classify -> align."""
+def test_auto_process_chains_landmarks_group_align(client):
+    """With no groups yet, auto-processing detects landmarks, groups the library, then aligns it."""
     from app.jobs import _REGISTRY, job
 
-    seen: list[tuple[str, list[int]]] = []
-    saved = {k: _REGISTRY.get(k) for k in ("extract_landmarks", "classify_poses", "align_photos")}
+    seen: list[tuple[str, dict]] = []
+    saved = {k: _REGISTRY.get(k) for k in ("extract_landmarks", "group_poses", "align_photos")}
     try:
         for name in saved:
-            job(name, lane="cv")(lambda ctx, params, name=name: seen.append((name, params["ids"])) or {"message": "ok"})
+            job(name, lane="cv")(lambda ctx, params, name=name: seen.append((name, dict(params))) or {"message": "ok"})
         # an older photo that must not be reprocessed
         old = _session(client)
         d0 = image_bytes(make_image(seed=20))
@@ -149,7 +149,20 @@ def test_auto_process_chains_landmarks_classify_align(client):
         t0 = time.time()
         while len(seen) < 3 and time.time() - t0 < 10:
             time.sleep(0.05)
-        assert seen == [("extract_landmarks", new_ids), ("classify_poses", new_ids), ("align_photos", new_ids)]
+        assert seen == [
+            (
+                "extract_landmarks",
+                {
+                    "ids": new_ids,
+                    "chain": [
+                        {"type": "group_poses", "params": {}},
+                        {"type": "align_photos", "params": {"force": True}},
+                    ],
+                },
+            ),
+            ("group_poses", {"chain": [{"type": "align_photos", "params": {"force": True}}]}),
+            ("align_photos", {"force": True}),
+        ]
     finally:
         for name, h in saved.items():
             if h is not None:

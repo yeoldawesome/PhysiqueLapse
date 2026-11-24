@@ -1,15 +1,9 @@
-"""First run: the tutorial, then "teach your poses" before anything is classified.
+"""First run: the tutorial, then automatic pose grouping.
 
 Flow for a new library:
-1. import photos (classification is held back: auto-processing only finds the joints);
-2. prepare: landmarks for every photo, then pose features (`pose_setup_prepare`), which also
-   tells which photos show a person's body (the physique photos);
-3. for each pose, the user picks a few of *their own* physique photos as examples (or skips a
-   pose they don't have). Candidates are ranked by the built-in rules for that pose, then by
-   how close they are to the examples already picked, so the likely ones come first;
-4. finish: classify every photo against those examples, then align.
-
-Libraries from before this existed (photos already sorted) count as done.
+1. import photos and find body landmarks;
+2. preview unlabeled groups based on how well photos align;
+3. apply groups and align each group.
 """
 
 from __future__ import annotations
@@ -29,11 +23,8 @@ MAX_CANDIDATES = 60
 
 
 def pose_setup_done(s: Session) -> bool:
-    if load_settings(s).pose_setup_done:
-        return True
-    # a library sorted before this step existed (picking examples here sets poses by hand, which
-    # must not count, or the step would end at the first pick)
-    return s.exec(select(Photo.id).where(Photo.pose_source.in_(("rule", "knn")))).first() is not None
+    settings = load_settings(s)
+    return settings.grouping_active or settings.pose_setup_done
 
 
 def _physique_filter(stmt):
@@ -50,16 +41,15 @@ def status(s: Session) -> dict[str, Any]:
     photos = s.exec(select(func.count(Photo.id))).one()
     pending = s.exec(select(func.count(Photo.id)).where(Photo.landmarks_status == "pending")).one()
     physique = s.exec(_physique_filter(select(func.count(Photo.id)))).one()
-    with_features = s.exec(_physique_filter(select(func.count(Photo.id)).join(PoseFeatures, PoseFeatures.photo_id == Photo.id))).one()
     done = pose_setup_done(s)
     if photos == 0:
         stage = "import"
     elif done:
         stage = "done"
-    elif pending or with_features < physique:
+    elif pending:
         stage = "prepare"
     else:
-        stage = "poses"
+        stage = "group"
     return {
         "stage": stage,
         "show_tutorial": not st.tutorial_seen and photos == 0,
@@ -69,7 +59,7 @@ def status(s: Session) -> dict[str, Any]:
         "photos": photos,
         "landmarks_pending": pending,
         "physique_photos": physique,
-        "features_ready": with_features,
+        "features_ready": physique,
     }
 
 

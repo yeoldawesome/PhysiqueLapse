@@ -71,11 +71,13 @@ class BulkDecisionIn(BaseModel):
 def _apply(s: Session, cand: ImportCandidate, decision: str) -> dict[str, Any]:
     if decision not in ("accept", "reject"):
         raise HTTPException(422, "decision must be accept or reject")
+    sess = s.get(ImportSession, cand.session_id) if cand.session_id else None
+    if sess is not None and sess.status in ("queued", "running"):
+        raise HTTPException(409, "this import is still processing")
     prev = cand.decision
     if decision == "accept":
         if cand.photo_id and s.get(Photo, cand.photo_id):
             return candidate_out(cand)
-        sess = s.get(ImportSession, cand.session_id) if cand.session_id else None
         settings = load_settings(s)
         src = Path(cand.file_path)
         if not src.exists():
@@ -107,6 +109,11 @@ def _apply(s: Session, cand: ImportCandidate, decision: str) -> dict[str, Any]:
     return candidate_out(cand)
 
 
+def _review_ready():
+    active_sessions = select(ImportSession.id).where(ImportSession.status.in_(("queued", "running")))
+    return ImportCandidate.session_id.is_(None) | ~ImportCandidate.session_id.in_(active_sessions)
+
+
 @router.get("/review")
 def review_list(
     session_id: int | None = None,
@@ -117,8 +124,8 @@ def review_list(
     page_size: int = 100,
     s: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    stmt = select(ImportCandidate).where(ImportCandidate.decision.in_(decision.split(",")))
-    cnt = select(func.count(ImportCandidate.id)).where(ImportCandidate.decision.in_(decision.split(",")))
+    stmt = select(ImportCandidate).where(ImportCandidate.decision.in_(decision.split(",")), _review_ready())
+    cnt = select(func.count(ImportCandidate.id)).where(ImportCandidate.decision.in_(decision.split(",")), _review_ready())
     for cond in (
         ImportCandidate.session_id == session_id if session_id else None,
         ImportCandidate.score >= min_score if min_score is not None else None,
@@ -133,7 +140,7 @@ def review_list(
 
 @router.get("/review/histogram")
 def histogram(session_id: int | None = None, bins: int = 20, s: Session = Depends(get_session)) -> dict[str, Any]:
-    stmt = select(ImportCandidate.score).where(ImportCandidate.score.is_not(None))
+    stmt = select(ImportCandidate.score).where(ImportCandidate.score.is_not(None), _review_ready())
     if session_id:
         stmt = stmt.where(ImportCandidate.session_id == session_id)
     scores = [x for x in s.exec(stmt).all()]
@@ -147,9 +154,9 @@ def histogram(session_id: int | None = None, bins: int = 20, s: Session = Depend
 @router.post("/review/bulk")
 def review_bulk(body: BulkDecisionIn, s: Session = Depends(get_session)) -> dict[str, Any]:
     if body.ids:
-        cands = s.exec(select(ImportCandidate).where(ImportCandidate.id.in_(body.ids))).all()
+        cands = s.exec(select(ImportCandidate).where(ImportCandidate.id.in_(body.ids), _review_ready())).all()
     elif body.min_score is not None:
-        stmt = select(ImportCandidate).where(ImportCandidate.decision == "review", ImportCandidate.score >= body.min_score)
+        stmt = select(ImportCandidate).where(ImportCandidate.decision == "review", ImportCandidate.score >= body.min_score, _review_ready())
         if body.session_id:
             stmt = stmt.where(ImportCandidate.session_id == body.session_id)
         cands = s.exec(stmt).all()
