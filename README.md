@@ -4,28 +4,19 @@ A local-only physique progress tracker. Import progress photos, date them, sort 
 
 Everything runs on this computer. The server binds to `127.0.0.1` only. The only network traffic is installing dependencies and the one-time model download.
 
-## Download (Windows and Mac)
+## Download and install
 
-### Windows
+**→ Step-by-step instructions for Windows and Mac: [INSTALL.md](INSTALL.md)**
 
-Get **`PhysiqueLapse-<version>-Setup.exe`** from the [Releases page](../../releases/latest), run it, and open PhysiqueLapse from the Start menu. It runs in its own window; no Python, Node or browser setup needed.
+Grab the file for your computer from the [Releases page](../../releases/latest):
 
-- Windows 10 or 11, 64-bit. No administrator rights needed.
-- Uses your GPU automatically (NVIDIA, AMD or Intel) for the image model and video export, and falls back to the CPU when there isn't one. Nothing extra to install; Settings → System shows what it's using.
-- First launch downloads the pose and face models (about 75 MB, one time); progress shows in the job panel.
-- Windows may say **"Windows protected your PC"** because the app isn't code-signed: click **More info → Run anyway**.
-- Your library lives in `%LOCALAPPDATA%\PhysiqueLapse` (photos, database, models, logs). Updating or reinstalling keeps it; the uninstaller asks before deleting it.
-- Prefer no installer? Download **`PhysiqueLapse-<version>-portable.zip`**, unzip anywhere and run `PhysiqueLapse.exe`.
-- New here? The app opens on a **Start here** page that walks through everything.
+| Computer | File | In short |
+|---|---|---|
+| Windows 10 / 11 | `PhysiqueLapse-<version>-Setup.exe` | Run it. If "Windows protected your PC" appears: **More info → Run anyway**. |
+| Windows, no install | `PhysiqueLapse-<version>-portable.zip` | Extract, run `PhysiqueLapse.exe`. |
+| Mac, Apple Silicon (M1 or newer), macOS 12+ | `PhysiqueLapse-<version>-mac.dmg` | Drag PhysiqueLapse into Applications. First open is blocked: **System Settings → Privacy & Security → Open Anyway**. |
 
-### Mac (Apple Silicon: M1 or newer, macOS 12+)
-
-Get **`PhysiqueLapse-<version>-mac.dmg`** from the [Releases page](../../releases/latest), open it and drag **PhysiqueLapse** into **Applications**.
-
-- The app isn't notarized by Apple, so the first launch is blocked: open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to PhysiqueLapse. (Or once in Terminal: `xattr -dr com.apple.quarantine /Applications/PhysiqueLapse.app`.)
-- The image model runs on the Apple GPU / Neural Engine (Core ML) and video export on the hardware encoder (VideoToolbox), with the CPU as fallback.
-- Your library lives in `~/Library/Application Support/PhysiqueLapse`. Deleting the app keeps it.
-- Intel Macs aren't built; run from source there (`./start.sh`).
+No Python, Node or anything else needed. The app uses your GPU automatically (NVIDIA / AMD / Intel on Windows, the Apple GPU on a Mac) and falls back to the CPU. First launch downloads about 75 MB of models, once. Your photos stay on your computer: `%LOCALAPPDATA%\PhysiqueLapse` on Windows, `~/Library/Application Support/PhysiqueLapse` on a Mac.
 
 ### Building the app yourself
 

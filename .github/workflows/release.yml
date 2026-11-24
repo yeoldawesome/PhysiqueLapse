@@ -153,6 +153,8 @@ jobs:
           generate_release_notes: true
           body: |
             ## Download
+            Step-by-step install instructions for Windows and Mac: [INSTALL.md](https://github.com/${{ github.repository }}/blob/main/INSTALL.md)
+
             **Windows 10 or 11 (64-bit)**
             - **PhysiqueLapse-…-Setup.exe**: installer (recommended). No admin rights needed.
             - **PhysiqueLapse-…-portable.zip**: no install; unzip anywhere and run `PhysiqueLapse.exe`.
