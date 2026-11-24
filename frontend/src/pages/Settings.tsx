@@ -8,6 +8,7 @@ import { post } from "../api/client";
 import type { Job } from "../api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "../lib/toast";
+import { mergeGroup } from "../api/grouping";
 
 interface GpuTest {
   ok: boolean;
@@ -156,11 +157,35 @@ function DeleteAllPhotos({ count }: { count: number }) {
   );
 }
 
-function CategoryRow({ c }: { c: Category }) {
+function CategoryRow({ c, categories }: { c: Category; categories: Category[] }) {
   const { update, remove } = useCategoryMutations();
+  const qc = useQueryClient();
   const [name, setName] = useState(c.name);
+  const mergeTargets = categories.filter((category) => category.id !== c.id && category.rule_key !== "other");
+  const [mergeInto, setMergeInto] = useState<number | "">(mergeTargets[0]?.id ?? "");
+  const [merging, setMerging] = useState(false);
   useEffect(() => setName(c.name), [c.name]);
+  useEffect(() => {
+    const hasTarget = categories.some((category) => category.id === mergeInto && category.id !== c.id && category.rule_key !== "other");
+    if (!hasTarget) setMergeInto(categories.find((category) => category.id !== c.id && category.rule_key !== "other")?.id ?? "");
+  }, [c.id, categories, mergeInto]);
   const u = (body: Partial<Category>) => update.mutate({ id: c.id, body });
+  const merge = async () => {
+    if (mergeInto === "") return;
+    setMerging(true);
+    try {
+      const result = await mergeGroup(c.id, mergeInto);
+      toast.info(`Merged ${result.moved} photos. Alignment is queued.`);
+      qc.invalidateQueries({ queryKey: ["categories"] });
+      qc.invalidateQueries({ queryKey: ["photos"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setMerging(false);
+    }
+  };
   return (
     <tr className="border-t border-border/60">
       <td className="px-3 py-2">
@@ -218,6 +243,31 @@ function CategoryRow({ c }: { c: Category }) {
             <Trash2 size={13} />
           </ConfirmButton>
         )}
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1">
+          <select
+            className="select min-w-0"
+            aria-label={`Merge ${c.name} into`}
+            value={mergeInto}
+            onChange={(e) => setMergeInto(e.target.value ? Number(e.target.value) : "")}
+            disabled={mergeTargets.length === 0 || c.rule_key === "other"}
+          >
+            {mergeTargets.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+          <ConfirmButton
+            className="btn btn-sm"
+            confirmText="Merge?"
+            disabled={merging || mergeTargets.length === 0 || c.rule_key === "other"}
+            onConfirm={() => void merge()}
+          >
+            Merge
+          </ConfirmButton>
+        </div>
       </td>
     </tr>
   );
@@ -280,11 +330,12 @@ export default function Settings() {
                   <th className="px-3 py-1 font-medium">Zoom</th>
                   <th className="px-3 py-1 font-medium" title="auto-flip photos that face the other way than the reference">Normalize facing</th>
                   <th />
+                  <th className="px-3 py-1 font-medium">Merge into</th>
                 </tr>
               </thead>
               <tbody>
                 {cats.map((c) => (
-                  <CategoryRow key={c.id} c={c} />
+                  <CategoryRow key={c.id} c={c} categories={cats} />
                 ))}
               </tbody>
             </table>
@@ -309,7 +360,15 @@ export default function Settings() {
           <h2 className="col-span-full font-medium">Alignment</h2>
           <NumberField label="Canvas width" value={draft.canvas_w} onChange={(v) => set("canvas_w", v)} min={256} max={4096} />
           <NumberField label="Canvas height" value={draft.canvas_h} onChange={(v) => set("canvas_h", v)} min={256} max={4096} />
-          <NumberField label="Rotation clamp (°)" value={draft.rotation_clamp_deg} step={0.5} onChange={(v) => set("rotation_clamp_deg", v)} />
+          <NumberField
+            label="Rotation clamp (°)"
+            hint="Maximum rotation for both group matching and alignment."
+            value={draft.rotation_clamp_deg}
+            step={0.5}
+            min={0}
+            max={90}
+            onChange={(v) => set("rotation_clamp_deg", v)}
+          />
           <Field label="Background removal" hint="needs the optional rembg extra">
             <Toggle checked={draft.bg_removal} onChange={(v) => set("bg_removal", v)} />
           </Field>

@@ -9,7 +9,7 @@ export default function GroupPhotos({ onApplied }: { onApplied?: () => void }) {
   const qc = useQueryClient();
   const status = useGroupingStatus();
   const [strict, setStrict] = useState(70);
-  const [minSize, setMinSize] = useState(3);
+  const [minSize, setMinSize] = useState(20);
   const [debounced, setDebounced] = useState(strict);
   const [busy, setBusy] = useState(false);
 
@@ -47,8 +47,8 @@ export default function GroupPhotos({ onApplied }: { onApplied?: () => void }) {
     <div className="flex flex-col gap-4">
       <section className="card space-y-3 p-4">
         <p className="text-sm text-muted">
-          Photos are compared by how closely their shoulders, elbows, wrists, and hips line up after alignment. Similar photos become an automatic group
-          such as “Group 1”; front/back and left/right views stay separate.
+          Grouping prioritizes shoulder, elbow, and wrist alignment. Hips have little influence and leg positions are ignored, so similar upper-body poses can
+          group together even when the lower body changes. Front/back and left/right views stay separate.
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm text-muted">Looser</span>
@@ -60,8 +60,12 @@ export default function GroupPhotos({ onApplied }: { onApplied?: () => void }) {
             onChange={(event) => setStrict(Number(event.target.value))}
             className="h-8 min-w-[200px] flex-1"
             aria-label="grouping strictness"
+            aria-valuetext={`${strict}% strict; tolerance ${toThreshold(strict).toFixed(3)} upper-body lengths`}
           />
           <span className="text-sm text-muted">Tighter</span>
+          <span className="text-xs tabular-nums text-muted">
+            {strict}% strict · tolerance {toThreshold(strict).toFixed(3)} upper-body lengths
+          </span>
           <label className="flex items-center gap-1 text-sm">
             min. group size
             <input

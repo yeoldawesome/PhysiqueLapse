@@ -254,8 +254,8 @@ export default function Guide() {
         <Section title="Built in" sub="Things that work across the app.">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <Feature icon={Tags} title="Automatic pose groups" to="/grouping" action="Adjust grouping">
-              Photos are grouped by how closely their shoulders, elbows, wrists, and hips line up after alignment. Groups have generic names such as <b>Group 1</b>;
-              photos without a detected body or in groups below the minimum size remain <b>Ungrouped</b>.
+              Grouping prioritizes shoulders, elbows, and wrists; hips have little influence and leg positions are ignored. Groups have generic names such as
+              <b> Group 1</b>; photos without a detected body or in groups below the minimum size remain <b>Ungrouped</b>.
             </Feature>
             <Feature icon={Crosshair} title="Alignment">
               Photos are only moved, scaled and turned, never stretched, so sizes stay honest. Fine-tune any photo in the <b>alignment editor</b> (from the drawer or

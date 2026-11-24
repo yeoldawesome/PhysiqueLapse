@@ -80,7 +80,7 @@ Same steps as above, with **`PhysiqueLapse-<version>-mac-intel.dmg`**. It runs t
 
 - The first start takes a little longer: the app downloads its pose and face models (about **75 MB, one time**). Progress shows in the job panel at the bottom right. After that it works fully offline.
 - A short **tutorial** walks you through the app. You can replay it any time from **Start here**.
-- Then: **Import** your photos. Once they're in, the app finds the ones that show your physique and asks you to pick a few of your own photos for each pose (skip any pose you don't do). Then it sorts and lines everything up.
+- Then: **Import** your photos. PhysiqueLapse can compare poses automatically, create generic groups such as “Group 1” and “Group 2,” and align each group. You don't need to choose example poses or name groups.
 - **GPU:** the app uses your graphics chip automatically (Windows: NVIDIA, AMD or Intel; Mac: the Apple GPU / Neural Engine) and falls back to the CPU when it can't. **Settings → System** shows what it's using.
 
 ### Where your photos are kept

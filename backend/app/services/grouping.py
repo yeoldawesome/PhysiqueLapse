@@ -1,11 +1,9 @@
-"""Group photos by how well they align with each other (instead of named poses).
+"""Group photos by upper-body alignment similarity instead of named poses.
 
-Distance between two photos = how badly one lines up on the other: the same weighted similarity
-fit the "joints" alignment uses (shoulders, elbows, wrists, hips, a little head), with the same
-rotation clamp; what's left over, in torso lengths, averaged both ways. The fit never mirrors, so
-a left-side and a right-side pose never look alike. Average-linkage clustering at a chosen
-strictness turns the distances into groups; every group aligns onto its most central photo.
-Groups below a minimum size, and photos without a body, go to "Ungrouped".
+Shoulders, elbows, and wrists drive each pairwise fit; hips have low weight and legs are not
+compared. Average-linkage clustering at the chosen strictness makes groups, which later align
+onto their most central photo. Groups below a minimum size, and photos without a body, go to
+"Ungrouped".
 """
 
 from __future__ import annotations
@@ -26,18 +24,23 @@ from ..jobs import JobContext, job
 from ..models import Alignment, Photo, PoseCategory, PoseExample, PoseLabel, now
 from ..settings import load_settings, save_settings
 from . import landmarks as L
-from .align import JOINT_FIT_WEIGHTS, TORSO_POINTS, VIS, anchors
+from .align import JOINT_FIT_WEIGHTS, VIS, anchors
 
 JOINTS = tuple(JOINT_FIT_WEIGHTS)
-WEIGHTS = np.array([JOINT_FIT_WEIGHTS[n] for n in JOINTS], dtype=np.float64)
-TORSO_IDX = np.array([JOINTS.index(n) for n in TORSO_POINTS])
+UPPER_BODY_POINTS = ("left_shoulder", "right_shoulder", "left_elbow", "right_elbow", "left_wrist", "right_wrist")
+UPPER_BODY_IDX = np.array([JOINTS.index(n) for n in UPPER_BODY_POINTS])
+SHOULDER_IDX = np.array([JOINTS.index(n) for n in ("left_shoulder", "right_shoulder")])
+GROUPING_WEIGHTS = {**JOINT_FIT_WEIGHTS, "left_hip": 0.2, "right_hip": 0.2}
+WEIGHTS = np.array([GROUPING_WEIGHTS[n] for n in JOINTS], dtype=np.float64)
+UPPER_BODY_SCALE_FACTOR = 2.3
 FAR = 1.0
 FACE_PENALTY = 0.4
 FACING_WEIGHT = 0.6
 FACE_POINTS = ("nose", "left_eye", "right_eye")
 UNGROUPED = "Ungrouped"
 DEFAULT_THRESHOLD = 0.15
-DEFAULT_MIN_SIZE = 3
+DEFAULT_MIN_SIZE = 20
+DEFAULT_FRAMING_ZOOM = 0.25
 
 
 @dataclass
@@ -63,6 +66,12 @@ def _face_terms(pts: dict, torso: float) -> tuple[bool, float]:
         return shown, math.nan
     sx = (pts["left_shoulder"]["x_px"] + pts["right_shoulder"]["x_px"]) / 2
     return shown, (pts["nose"]["x_px"] - sx) / torso
+
+
+def upper_body_scale(pts: dict) -> float:
+    """Approximate torso scale from the head-to-shoulder span, independent of hip placement."""
+    body = anchors(pts)
+    return float(np.linalg.norm(body.shoulder_mid - body.head) * UPPER_BODY_SCALE_FACTOR)
 
 
 def view_penalty(face_i: bool, facing_i: float, face: np.ndarray, facing: np.ndarray) -> np.ndarray:
@@ -99,7 +108,7 @@ def load_points(s: Session, ids: list[int]) -> PoseSet:
         points.append([[pts[n]["x_px"], pts[n]["y_px"]] for n in JOINTS])
         visible.append([pts[n]["visibility"] >= VIS for n in JOINTS])
         try:
-            torso = anchors(pts).torso or math.nan
+            torso = upper_body_scale(pts)
         except Exception:
             torso = math.nan
         torsos.append(torso)
@@ -127,13 +136,13 @@ def fit_errors(
     dst_torso: np.ndarray,
     clamp_deg: float,
 ) -> np.ndarray:
-    """Vectorised weighted fit error in each destination's torso lengths."""
+    """Vectorised upper-body-weighted fit error in upper-body scale units."""
     matching = src_vis[None, :] & dst_vis
     weights = WEIGHTS[None, :] * matching
     total_weight = weights.sum(1)
     ok = (
-        (matching.sum(1) >= 3)
-        & (matching[:, TORSO_IDX].sum(1) >= 2)
+        (matching[:, UPPER_BODY_IDX].sum(1) >= 3)
+        & (matching[:, SHOULDER_IDX].sum(1) >= 1)
         & (total_weight > 0)
         & np.isfinite(dst_torso)
         & (dst_torso > 1e-6)
@@ -314,7 +323,14 @@ def apply(s: Session, threshold: float, min_size: int) -> dict[str, Any]:
     for order, group in enumerate(groups):
         name = group.name if group.name not in taken else f"{group.name} ({order + 1})"
         taken.add(name)
-        category = PoseCategory(name=name, sort_order=order, reference_photo_id=group.medoid, align_method="joints", anchor_mode="auto")
+        category = PoseCategory(
+            name=name,
+            sort_order=order,
+            reference_photo_id=group.medoid,
+            align_method="joints",
+            anchor_mode="auto",
+            framing_zoom=DEFAULT_FRAMING_ZOOM,
+        )
         s.add(category)
         s.flush()
         new_ids[name] = category.id

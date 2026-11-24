@@ -204,8 +204,8 @@ JOINT_FIT_WEIGHTS = {
     "right_elbow": 1.5,
     "left_wrist": 1.0,
     "right_wrist": 1.0,
-    "left_hip": 1.0,
-    "right_hip": 1.0,
+    "left_hip": 0.2,
+    "right_hip": 0.2,
 }
 ARM_JOINTS = ("left_shoulder", "right_shoulder", "left_elbow", "right_elbow", "left_wrist", "right_wrist")
 ALL_FIT_POINTS = tuple(dict.fromkeys([*FIT_WEIGHTS, *JOINT_FIT_WEIGHTS]))

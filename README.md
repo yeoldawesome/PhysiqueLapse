@@ -48,7 +48,7 @@ Requirements: Python 3.12, Node 20.19+ or 22 LTS (Node 21 works with the pinned 
 
 1. **Import** photos: drag files or folders in, or point at a folder by path (faster for thousands of files). Exact and near duplicates are skipped and listed in the import's details with "keep anyway".
 2. **Dates** come from EXIF, then Snapchat metadata, then the filename, then the file time. Low-confidence dates are highlighted; fix them in the photo drawer or with the bulk bar (set, shift by days, re-derive).
-3. **Dashboard → Process everything** detects body landmarks, automatically groups similar poses as **Group 1**, **Group 2**, etc., then aligns each group. Use **Group photos** to preview or adjust grouping strictness; no pose examples or names are needed.
+3. **Dashboard → Process everything** detects body landmarks, automatically groups similar upper-body poses as **Group 1**, **Group 2**, etc., then aligns each group. Shoulders, elbows, and wrists drive grouping; hips have little influence and leg positions are ignored. Use **Group photos** to preview or adjust grouping strictness; no pose examples or names are needed.
 4. **Pick a reference** per group (the star in the photo drawer; the earliest good photo is used by default) and **Align**. Fix any photo in the **Alignment editor**.
 5. **Viewer**: scrub, play, onion skin, split view, measurements under each frame, **Export** MP4 or GIF.
 6. **Stats**: add weight and measurements, or import a CSV (sample files on the page).

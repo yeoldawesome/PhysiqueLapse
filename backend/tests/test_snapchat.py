@@ -150,6 +150,11 @@ def test_import_review_undo_and_resume(client, tmp_path):
         r = client.post("/api/review/bulk", json={"min_score": 0.34, "decision": "accept"}).json()
         assert r["updated"] == 3, r
         assert client.get("/api/photos").json()["total"] == 3
+        r = client.post("/api/review/bulk", json={"all_review": True, "max_score": 0.4, "decision": "reject"}).json()
+        assert r["updated"] == 1, r
+        assert client.get("/api/review").json()["total"] == 0
+        r = client.post("/api/review/bulk", json={"all_review": True, "decision": "reject"}).json()
+        assert r["updated"] == 0, r
         hist = client.get("/api/review/histogram").json()
         assert hist["total"] == 6 and sum(hist["counts"]) == 6
 
@@ -162,7 +167,7 @@ def test_import_review_undo_and_resume(client, tmp_path):
         # rejected files are never copied, and a plain folder import of the export skips them via the ledger
         j = _wait(client, client.post("/api/imports/folder", json={"path": str(root / "memories")}).json()["job"]["id"])
         cnt = j["result"]["counts"]
-        assert cnt.get("skipped_ledger", 0) == 2 and cnt.get("duplicates", 0) == 3
+        assert cnt.get("skipped_ledger", 0) == 3 and cnt.get("duplicates", 0) == 3
     finally:
         set_scorer_for_tests(None)
         set_backend_for_tests(None, key=None)

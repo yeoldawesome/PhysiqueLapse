@@ -144,6 +144,8 @@ def test_zip_review_queue_waits_until_processing_finishes(client, tmp_path, monk
         assert entered.wait(10), "pose processing did not start"
 
         assert client.get("/api/review").json()["total"] == 0
+        rejected = client.post("/api/review/bulk", json={"all_review": True, "decision": "reject"})
+        assert rejected.status_code == 200 and rejected.json()["updated"] == 0
         assert client.get("/api/dashboard").json()["counts"]["review_queue"] == 0
         assert "review" not in client.get(f"/api/snapchat/zip-session/{sid}").json()["decisions"]
 

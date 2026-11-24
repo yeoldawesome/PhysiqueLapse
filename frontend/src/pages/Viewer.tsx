@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronFirst, ChevronLast, Columns2, Crosshair, Film, Layers, Shirt, Pause, Pencil, Play, SlidersHorizontal, Square, StepBack, StepForward } from "lucide-react";
-import { get, post } from "../api/client";
+import { get, patch, post } from "../api/client";
 import { useCategories, useDashboard, useRunJob, useSettings } from "../api/queries";
-import type { Metric, MetricEntry, Sequence, SequenceFrame } from "../api/types";
+import type { Category, Job, Metric, MetricEntry, Sequence, SequenceFrame } from "../api/types";
 import { Empty, PageHeader, Spinner, Toggle } from "../components/ui";
 import MetricChart from "../components/MetricChart";
 import ExportDialog from "../components/ExportDialog";
 import { useShortcuts } from "../lib/keyboard";
 import { fmtRatio } from "../components/PhotoMeasurements";
 import { fmtDate, toDateValue } from "../lib/format";
+import { toast } from "../lib/toast";
 
 type Mode = "single" | "onion" | "split";
 
@@ -78,6 +79,7 @@ function StatsStrip({ frame }: { frame: SequenceFrame | undefined }) {
 
 export default function Viewer() {
   const [params, setParams] = useSearchParams();
+  const qc = useQueryClient();
   const { data: cats = [] } = useCategories();
   const { data: dash } = useDashboard();
   const { data: settings } = useSettings();
@@ -87,6 +89,7 @@ export default function Viewer() {
   const group = rawPose === "abs" ? "abs" : rawPose === "face" ? "face" : null;
   const isAbs = group != null;
   const poseId = isAbs ? undefined : Number(params.get("pose_id")) || cats.find((c) => c.photo_count > 0 && c.rule_key !== "other")?.id || cats[0]?.id;
+  const activeCategory = cats.find((category) => category.id === poseId);
   const from = params.get("from") ?? "";
   const to = params.get("to") ?? "";
   const seq = useQuery({
@@ -152,6 +155,8 @@ export default function Viewer() {
   const [index, setIndex] = useState(0);
   const [compare, setCompare] = useState(0);
   const [mode, setMode] = useState<Mode>("single");
+  const [framingZoomDraft, setFramingZoomDraft] = useState<number | null>(null);
+  const [savingFramingZoom, setSavingFramingZoom] = useState(false);
   const [opacity, setOpacity] = useState(0.5);
   const [split, setSplit] = useState(0.5);
   // ?autoplay=1: start the flipbook straight away
@@ -161,9 +166,68 @@ export default function Viewer() {
   const [exportOpen, setExportOpen] = useState(() => new URLSearchParams(window.location.search).get("export") === "1"); // ?export=1 opens the export window
   const [metricId, setMetricId] = useState<number | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const zoomSaveTimer = useRef<number | null>(null);
+  const pendingZoom = useRef<{ categoryId: number; zoom: number } | null>(null);
   const [panel, setPanel] = useState(false); // phone: the side panel opens below the photo
   const swipe = useRef<{ x: number; y: number } | null>(null);
+  const framingZoom = framingZoomDraft ?? activeCategory?.framing_zoom ?? 1;
 
+  const saveFramingZoom = useCallback(
+    async (categoryId: number, zoom: number) => {
+      setSavingFramingZoom(true);
+      try {
+        const category = await patch<Category>(`/poses/${categoryId}`, { framing_zoom: zoom });
+        qc.setQueryData<Category[]>(["categories"], (old) => old?.map((item) => (item.id === category.id ? category : item)));
+        try {
+          await post<Job>(`/poses/${categoryId}/align`, { force: true });
+          toast.info(`Saved ${category.name} framing. Alignment is queued.`);
+          qc.invalidateQueries({ queryKey: ["jobs"] });
+        } catch (e) {
+          toast.error(`Framing saved, but alignment could not be queued: ${(e as Error).message}`);
+        }
+      } catch (e) {
+        toast.error(`Could not save group framing: ${(e as Error).message}`);
+      } finally {
+        setSavingFramingZoom(false);
+        if (pendingZoom.current?.categoryId === categoryId && pendingZoom.current.zoom === zoom) {
+          pendingZoom.current = null;
+          setFramingZoomDraft(null);
+        }
+      }
+    },
+    [qc],
+  );
+  const changeFramingZoom = (zoom: number) => {
+    if (!activeCategory) return;
+    if (zoom === activeCategory.framing_zoom) {
+      if (zoomSaveTimer.current != null) window.clearTimeout(zoomSaveTimer.current);
+      zoomSaveTimer.current = null;
+      pendingZoom.current = null;
+      setFramingZoomDraft(null);
+      return;
+    }
+    setFramingZoomDraft(zoom);
+    pendingZoom.current = { categoryId: activeCategory.id, zoom };
+    if (zoomSaveTimer.current != null) window.clearTimeout(zoomSaveTimer.current);
+    const categoryId = activeCategory.id;
+    zoomSaveTimer.current = window.setTimeout(() => {
+      zoomSaveTimer.current = null;
+      void saveFramingZoom(categoryId, zoom);
+    }, 500);
+  };
+
+  useEffect(() => {
+    if (zoomSaveTimer.current != null) window.clearTimeout(zoomSaveTimer.current);
+    zoomSaveTimer.current = null;
+    pendingZoom.current = null;
+    setFramingZoomDraft(null);
+  }, [poseId]);
+  useEffect(
+    () => () => {
+      if (zoomSaveTimer.current != null) window.clearTimeout(zoomSaveTimer.current);
+    },
+    [],
+  );
   useEffect(() => {
     if (settings) {
       setFps(settings.playback_fps);
@@ -367,7 +431,13 @@ export default function Viewer() {
                   );
                 })}
                 {mode === "onion" && cmp && (
-                  <img src={frameSrc(cmp)} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-contain" style={{ opacity }} draggable={false} />
+                  <img
+                    src={frameSrc(cmp)}
+                    alt=""
+                    className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+                    style={{ opacity }}
+                    draggable={false}
+                  />
                 )}
                 {mode === "split" && cmp && (
                   <>
@@ -497,6 +567,30 @@ export default function Viewer() {
                     <input type="range" min={0} max={1} step={0.05} value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} />
                   </label>
                 )}
+              </div>
+            )}
+            {!isAbs && (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="label">Group framing</span>
+                  {savingFramingZoom ? <Spinner size={12} /> : <span className="ml-auto tabular-nums text-muted">{Math.round(framingZoom * 100)}%</span>}
+                  {framingZoom !== 1 && (
+                    <button className="btn btn-sm" disabled={savingFramingZoom} onClick={() => changeFramingZoom(1)}>
+                      Reset
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="range"
+                  min={0.25}
+                  max={4}
+                  step={0.05}
+                  value={framingZoom}
+                  onChange={(e) => changeFramingZoom(Number(e.target.value))}
+                  disabled={!activeCategory || savingFramingZoom}
+                  aria-label="group framing zoom"
+                />
+                <span className="text-[11px] text-muted">Updates the aligned composition for every photo in this group.</span>
               </div>
             )}
             {isAbs && (

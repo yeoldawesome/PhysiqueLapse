@@ -132,6 +132,22 @@ def test_body_fit_spreads_error_instead_of_pinning_the_head():
     assert body_torso < 0.5 * head_torso
 
 
+def test_joint_alignment_prioritizes_upper_body_when_hips_differ():
+    ref = PF.front_relaxed()
+    photo = copy.deepcopy(ref)
+    for point in photo["points"]:
+        if point["name"] in ("left_hip", "right_hip"):
+            point["y_px"] += 150
+
+    target = A.make_target(L.points_dict(ref), PF.W, PF.H, cat(), W, H)
+    tr, _, _ = A.solve(L.points_dict(photo), target, cat(), clamp_deg=8.0)
+    result = A.residuals(L.points_dict(photo), tr, target)
+
+    assert result["shoulder_mid"] < 1.0
+    assert result["hip_mid"] > 100.0
+    assert result["joints"] < result["mean"] / 2
+
+
 def test_body_fit_clamps_rotation_and_falls_back_without_torso():
     ref = PF.front_relaxed()
     c = cat(align_method="body")

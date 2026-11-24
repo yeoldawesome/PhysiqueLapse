@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Undo2, X, ZoomIn } from "lucide-react";
 import { get, post } from "../api/client";
 import type { Candidate, Page } from "../api/types";
-import { Empty, Modal, PageHeader, Spinner } from "../components/ui";
+import { ConfirmButton, Empty, Modal, PageHeader, Spinner } from "../components/ui";
 import { useShortcuts } from "../lib/keyboard";
 import { fmtDate } from "../lib/format";
 import { toast } from "../lib/toast";
@@ -68,6 +68,7 @@ export default function ReviewQueue() {
   const [cursor, setCursor] = useState(0);
   const [zoom, setZoom] = useState(false);
   const [above, setAbove] = useState(0.6);
+  const [rejectingAll, setRejectingAll] = useState(false);
   const bounds = { all: [undefined, undefined], high: [0.55, undefined], mid: [0.4, 0.55], low: [undefined, 0.4] }[band];
   const q = useQuery({
     queryKey: ["review", band],
@@ -107,6 +108,24 @@ export default function ReviewQueue() {
     }
     refresh();
   }, [refresh]);
+  const rejectAll = async () => {
+    setRejectingAll(true);
+    try {
+      const r = await post<{ updated: number; errors: string[] }>("/review/bulk", {
+        all_review: true,
+        decision: "reject",
+        min_score: bounds[0],
+        max_score: bounds[1],
+      });
+      if (r.errors.length) toast.error(`Rejected ${r.updated}; ${r.errors.length} could not be rejected.`);
+      else toast.success(`Rejected ${r.updated}`);
+      refresh();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setRejectingAll(false);
+    }
+  };
 
   useShortcuts(
     useMemo(
@@ -149,6 +168,15 @@ export default function ReviewQueue() {
             accept all ≥ {above}
           </button>
         </span>
+        <ConfirmButton
+          className="btn btn-danger"
+          confirmText={`Reject ${q.data?.total ?? 0}?`}
+          disabled={rejectingAll || !q.data?.total}
+          onConfirm={() => void rejectAll()}
+          title={`Reject all ${band === "all" ? "review candidates" : `${band}-score candidates`}`}
+        >
+          <X size={14} /> Reject all
+        </ConfirmButton>
         <button className="btn" onClick={undo} title="U">
           <Undo2 size={14} /> Undo
         </button>

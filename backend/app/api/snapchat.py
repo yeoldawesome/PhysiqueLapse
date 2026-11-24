@@ -66,6 +66,8 @@ class BulkDecisionIn(BaseModel):
     decision: str
     session_id: int | None = None
     min_score: float | None = None  # "accept all above X" (applies to the review queue)
+    max_score: float | None = None
+    all_review: bool = False
 
 
 def _apply(s: Session, cand: ImportCandidate, decision: str) -> dict[str, Any]:
@@ -159,9 +161,18 @@ def review_bulk(body: BulkDecisionIn, s: Session = Depends(get_session)) -> dict
         stmt = select(ImportCandidate).where(ImportCandidate.decision == "review", ImportCandidate.score >= body.min_score, _review_ready())
         if body.session_id:
             stmt = stmt.where(ImportCandidate.session_id == body.session_id)
+        if body.max_score is not None:
+            stmt = stmt.where(ImportCandidate.score < body.max_score)
+        cands = s.exec(stmt).all()
+    elif body.all_review:
+        stmt = select(ImportCandidate).where(ImportCandidate.decision == "review", _review_ready())
+        if body.session_id:
+            stmt = stmt.where(ImportCandidate.session_id == body.session_id)
+        if body.max_score is not None:
+            stmt = stmt.where(ImportCandidate.score < body.max_score)
         cands = s.exec(stmt).all()
     else:
-        raise HTTPException(422, "send ids or min_score")
+        raise HTTPException(422, "send ids, min_score, or all_review")
     done, errors = 0, []
     for c in cands:
         try:

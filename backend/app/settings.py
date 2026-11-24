@@ -41,7 +41,7 @@ class AppSettings(BaseModel):
     # alignment canvas
     canvas_w: int = 1080
     canvas_h: int = 1350
-    rotation_clamp_deg: float = 15.0  # selfies tilt 10-20 deg; body fit over 4+ torso points is robust enough
+    rotation_clamp_deg: float = 45.0
     bg_removal: bool = False
     # stats
     units: Literal["lb", "kg"] = "lb"
@@ -84,7 +84,7 @@ class AppSettings(BaseModel):
     # automatic unlabeled pose groups
     grouping_active: bool = False
     grouping_threshold: float = Field(0.15, ge=0.02, le=0.6)
-    grouping_min_size: int = Field(3, ge=1, le=50)
+    grouping_min_size: int = Field(20, ge=1, le=50)
 
 
 RESERVED_KEYS = {"schema_version"}

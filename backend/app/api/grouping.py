@@ -18,7 +18,7 @@ router = APIRouter(prefix="/grouping", tags=["grouping"])
 
 class GroupingIn(BaseModel):
     threshold: float = Field(0.15, ge=0.02, le=0.6)
-    min_size: int = Field(3, ge=1, le=50)
+    min_size: int = Field(20, ge=1, le=50)
 
 
 class MergeIn(BaseModel):
@@ -38,7 +38,7 @@ def status(s: Session = Depends(get_session)) -> dict[str, Any]:
 @router.get("/preview")
 def preview(
     threshold: float = 0.15,
-    min_size: int = 3,
+    min_size: int = 20,
     s: Session = Depends(get_session),
 ) -> dict[str, Any]:
     if not 0.02 <= threshold <= 0.6 or not 1 <= min_size <= 50:
