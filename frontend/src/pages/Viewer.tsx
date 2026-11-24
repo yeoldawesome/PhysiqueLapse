@@ -11,7 +11,6 @@ import ExportDialog from "../components/ExportDialog";
 import { useShortcuts } from "../lib/keyboard";
 import { fmtRatio } from "../components/PhotoMeasurements";
 import { fmtDate, toDateValue } from "../lib/format";
-import { useCaptureListing } from "../api/capture";
 
 type Mode = "single" | "onion" | "split";
 
@@ -83,21 +82,18 @@ export default function Viewer() {
   const { data: dash } = useDashboard();
   const { data: settings } = useSettings();
   const run = useRunJob();
-  // close-up groups (attributes across every pose) or a daily capture series ("series:<id>")
-  // instead of a pose category
+  // close-up groups (attributes across every pose) instead of a pose category
   const rawPose = params.get("pose_id") ?? "";
-  const seriesId = rawPose.startsWith("series:") ? Number(rawPose.slice(7)) || null : null;
-  const group = rawPose === "abs" ? "abs" : rawPose === "face" ? "face" : seriesId != null ? "series" : null;
+  const group = rawPose === "abs" ? "abs" : rawPose === "face" ? "face" : null;
   const isAbs = group != null;
   const poseId = isAbs ? undefined : Number(params.get("pose_id")) || cats.find((c) => c.photo_count > 0 && c.rule_key !== "other")?.id || cats[0]?.id;
-  const capture = useCaptureListing();
   const from = params.get("from") ?? "";
   const to = params.get("to") ?? "";
   const seq = useQuery({
-    queryKey: ["sequence", group === "series" ? rawPose : (group ?? poseId), from, to],
+    queryKey: ["sequence", group ?? poseId, from, to],
     queryFn: () =>
       get<Sequence>(
-        group === "abs" ? "/abs/sequence" : group === "face" ? "/faces/sequence" : group === "series" ? `/capture/series/${seriesId}/sequence` : `/poses/${poseId}/sequence`,
+        group === "abs" ? "/abs/sequence" : group === "face" ? "/faces/sequence" : `/poses/${poseId}/sequence`,
         { from, to },
       ),
     enabled: isAbs || !!poseId,
@@ -158,7 +154,7 @@ export default function Viewer() {
   const [mode, setMode] = useState<Mode>("single");
   const [opacity, setOpacity] = useState(0.5);
   const [split, setSplit] = useState(0.5);
-  // ?autoplay=1 (the Capture page's "Play"): start the flipbook straight away
+  // ?autoplay=1: start the flipbook straight away
   const [playing, setPlaying] = useState(() => new URLSearchParams(window.location.search).get("autoplay") === "1");
   const [fps, setFps] = useState(2);
   const [fade, setFade] = useState(true);
@@ -182,7 +178,7 @@ export default function Viewer() {
     // new pose: start at the latest photo, compare with the first
     setIndex(Math.max(0, frames.length - 1));
     setCompare(0);
-  }, [poseId, group, seriesId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [poseId, group]); // eslint-disable-line react-hooks/exhaustive-deps
 
   usePreload(frames, index);
 
@@ -272,7 +268,7 @@ export default function Viewer() {
             : ""
         }
       >
-        <select className="select max-w-full" value={group === "series" ? rawPose : (group ?? poseId ?? "")} onChange={(e) => set("pose_id", e.target.value)}>
+        <select className="select max-w-full" value={group ?? poseId ?? ""} onChange={(e) => set("pose_id", e.target.value)}>
           {cats.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name} ({c.photo_count})
@@ -280,11 +276,6 @@ export default function Viewer() {
           ))}
           <option value="abs">Abs ({dash?.abs.visible ?? 0})</option>
           <option value="face">Face ({dash?.face.visible ?? 0})</option>
-          {(capture.data?.daily ?? []).map((d) => (
-            <option key={d.id} value={`series:${d.id}`}>
-              Daily: {d.name} ({d.photo_count})
-            </option>
-          ))}
         </select>
         <button
           className={`btn ${hideSleeves ? "btn-primary" : ""}`}
@@ -605,7 +596,6 @@ export default function Viewer() {
           onClose={() => setExportOpen(false)}
           poseId={poseId ?? null}
           group={group}
-          seriesId={seriesId}
           from={from}
           to={to}
           defaultFps={fps}

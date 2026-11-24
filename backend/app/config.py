@@ -3,12 +3,10 @@
 Everything the app writes lives under DATA_DIR (default: <project>/data). Set the
 DATA_DIR environment variable to relocate it.
 
-Photos, derived images and the database belong to a *library* (see tenancy.py): the desktop
-app's library is DATA_DIR itself; on the server each account has its own under
-DATA_DIR/libraries/<id>/. The library paths below (ORIGINALS_DIR, THUMBS_DIR, DB_PATH, ...) are
-therefore looked up on every use, for the library of the current request or job. Paths stored
-in a database are relative to its library folder, so a library can be moved or backed up by
-copying it. Models are shared by everyone (MODELS_DIR).
+Photos, derived images and the database belong to the *library* (see tenancy.py), which is
+DATA_DIR itself. The library paths below (ORIGINALS_DIR, THUMBS_DIR, DB_PATH, ...) are looked up
+on every use. Paths stored in the database are relative to the library folder, so a library can
+be moved or backed up by copying it. Models live in MODELS_DIR.
 """
 
 from __future__ import annotations
@@ -32,7 +30,7 @@ else:
     _default_data = PROJECT_ROOT / "data"
 
 DATA_DIR = Path(os.environ.get("DATA_DIR") or _default_data).resolve()
-MODELS_DIR = DATA_DIR / "models"  # shared by every library
+MODELS_DIR = DATA_DIR / "models"
 CLIP_CACHE_DIR = MODELS_DIR / "open_clip"
 
 # library paths, relative to the current library's folder (see the module docstring)
@@ -63,18 +61,8 @@ def __getattr__(name: str) -> Path:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     return library_root() / sub
 
-# ---------------------------------------------------------------------------- mode
-# desktop (default): the local app as it has always been - 127.0.0.1, no login.
-# server: the same app on a home server, used from phones and laptops in a browser; login
-# required on every /api route. Everything server-only reads these values, never a second
-# copy of the code.
-
-
-def _env_bool(name: str, default: bool) -> bool:
-    v = os.environ.get(name)
-    if v is None or v.strip() == "":
-        return default
-    return v.strip().lower() in ("1", "true", "yes", "on")
+# ---------------------------------------------------------------------------- process
+# Local only: the server listens on this computer's loopback address, no login.
 
 
 def _env_int(name: str, default: int) -> int:
@@ -84,54 +72,16 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-MODE = (os.environ.get("PL_MODE") or "desktop").strip().lower()
-if MODE not in ("desktop", "server"):
-    MODE = "desktop"
-SERVER = MODE == "server"
-
-HOST = os.environ.get("PL_HOST") or os.environ.get("HOST") or ("0.0.0.0" if SERVER else "127.0.0.1")
-PORT = int(os.environ.get("PORT", "8420" if SERVER else "8000"))
-
-COOKIE_SECURE = _env_bool("PL_COOKIE_SECURE", True)  # tailscale serve gives us HTTPS
-SESSION_DAYS = _env_int("PL_SESSION_DAYS", 30)
-# extra origins allowed to send state-changing requests (besides the request's own host)
-ALLOWED_ORIGINS = [o.strip().rstrip("/") for o in (os.environ.get("PL_ALLOWED_ORIGINS") or "").split(",") if o.strip()]
-TRUSTED_PROXIES = os.environ.get("PL_TRUSTED_PROXIES") or "*"
-# job runner: model-work threads and their priority (server mode shares the CPU with other apps)
+HOST = "127.0.0.1"
+PORT = int(os.environ.get("PORT", "8000"))
+# job runner: model-work threads
 CV_WORKERS = max(1, _env_int("PL_CV_WORKERS", 1))
-JOB_NICE = _env_int("PL_JOB_NICE", 10 if SERVER else 0)
-# cap for torch / OpenCV threads; os.cpu_count() sees every host CPU inside a container
-THREADS = _env_int("PL_THREADS", 0)  # 0 = automatic (as before)
+# cap for torch / OpenCV threads
+THREADS = _env_int("PL_THREADS", 0)  # 0 = automatic
 
-
-# accounts (server mode): the public address (for links in emails and the Origin check), the
-# default storage allowance per account, and the mail server for password-reset emails
-PUBLIC_URL = (os.environ.get("PL_PUBLIC_URL") or "").strip().rstrip("/")
-QUOTA_MB = max(100, _env_int("PL_QUOTA_MB", 5120))
-SMTP_HOST = os.environ.get("SMTP_HOST") or ""
-SMTP_PORT = _env_int("SMTP_PORT", 587)
-SMTP_USER = os.environ.get("SMTP_USER") or ""
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD") or ""
-SMTP_TLS = (os.environ.get("SMTP_TLS") or "starttls").lower()  # starttls | ssl | none
-MAIL_FROM = os.environ.get("MAIL_FROM") or ""
-
-# uploads from the browser
+# uploads from the browser window (drag and drop)
 MAX_UPLOAD_MB = max(1, _env_int("PL_MAX_UPLOAD_MB", 300))  # per file
 UPLOAD_CHUNK_MB = 8
-# Server mode: server folders that "import from a folder path" (and the Snapchat folder scan)
-# may read. Empty = path imports are off; browser upload is the way in.
-IMPORT_ROOTS = [Path(p).expanduser().resolve() for p in (os.environ.get("PL_IMPORT_ROOTS") or "").split(os.pathsep) if p.strip()]
-
-
-def path_import_allowed(path: Path) -> bool:
-    """Desktop: any folder on this computer. Server: only inside PL_IMPORT_ROOTS."""
-    if not SERVER:
-        return True
-    try:
-        p = Path(path).expanduser().resolve()
-    except OSError:
-        return False
-    return any(p == r or p.is_relative_to(r) for r in IMPORT_ROOTS)
 
 
 def cpu_threads(reserve: int = 2) -> int:
@@ -144,10 +94,6 @@ def cpu_threads(reserve: int = 2) -> int:
         n = os.cpu_count() or 4
     return max(1, n - reserve)
 
-
-def auth_required() -> bool:
-    """Read at request time (tests switch modes)."""
-    return SERVER
 
 THUMB_LONG_SIDE = 400
 PREVIEW_LONG_SIDE = 1280
@@ -221,13 +167,11 @@ def abs_path(stored: str) -> Path:
     return library_root() / stored
 
 
-# The desktop app has one library: DATA_DIR itself. On the server every account has its own and
-# there is deliberately no default, so nothing can touch library data outside a signed-in request
-# or that account's jobs.
+# The one library: DATA_DIR itself.
 def _set_default_library() -> None:
     from .tenancy import Library, set_default
 
-    set_default(None if SERVER else Library(0, DATA_DIR))
+    set_default(Library(0, DATA_DIR))
 
 
 _set_default_library()

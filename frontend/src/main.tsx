@@ -14,11 +14,6 @@ import Settings from "./pages/Settings";
 import Editor from "./pages/Editor";
 import People from "./pages/People";
 import Guide from "./pages/Guide";
-import Login, { Forgot, Reset, Signup } from "./pages/Login";
-import Account, { Privacy } from "./pages/Account";
-import Admin from "./pages/Admin";
-import Capture from "./pages/Capture";
-import { startOutbox } from "./lib/outbox";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,11 +22,6 @@ const queryClient = new QueryClient({
 });
 
 const router = createBrowserRouter([
-  { path: "/login", element: <Login /> },
-  { path: "/signup", element: <Signup /> },
-  { path: "/forgot", element: <Forgot /> },
-  { path: "/reset", element: <Reset /> },
-  { path: "/privacy", element: <Privacy /> },
   {
     path: "/",
     element: <App />,
@@ -46,21 +36,9 @@ const router = createBrowserRouter([
       { path: "editor/:photoId", element: <Editor /> },
       { path: "stats", element: <Stats /> },
       { path: "settings", element: <Settings /> },
-      { path: "capture", element: <Capture /> },
-      { path: "account", element: <Account /> },
-      { path: "admin", element: <Admin /> },
     ],
   },
 ]);
-
-// Installable as a home-screen app when served over HTTPS (the home server). The worker caches
-// nothing. The desktop app runs on plain http://127.0.0.1 and never registers it.
-if ("serviceWorker" in navigator && window.location.protocol === "https:") {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
-}
-
-// photos taken on the Capture page upload in the background, retried until they make it
-startOutbox();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

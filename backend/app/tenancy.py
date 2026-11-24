@@ -1,11 +1,8 @@
 """Which library (photo collection: folder + database) the current code works on.
 
-The desktop app has one library: DATA_DIR itself. The server gives every account its own
-library under DATA_DIR/libraries/<id>/ with the same layout. The library is chosen per request
-(from the logged-in user) and per background job (from the job's queue entry) and held in a
-context variable, so all existing code - which reads `config.THUMBS_DIR`, `engine()` and so
-on - works on the right library without knowing about users. Nothing can fall back to a
-shared folder: in server mode, touching a library path with no library chosen is an error.
+There is one library, DATA_DIR itself (tests point it at a temporary folder). Code reads
+`config.THUMBS_DIR`, `engine()` and so on, which resolve through `current()`; background jobs
+carry the library they were queued in.
 """
 
 from __future__ import annotations
@@ -20,12 +17,12 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Library:
-    id: int  # 0 = the single library of the desktop app (and of the server before accounts)
+    id: int
     root: Path
 
 
 class NoLibrary(RuntimeError):
-    """Library data was touched outside a request or job that chose a library."""
+    """Library data was touched before a library was set."""
 
 
 _current: ContextVar[Library | None] = ContextVar("physiquelapse_library", default=None)
@@ -34,7 +31,6 @@ _lock = threading.Lock()
 
 
 def set_default(lib: Library | None) -> None:
-    """The library used when none is chosen (desktop app, tests, single-user server)."""
     global _default
     with _lock:
         _default = lib
@@ -47,7 +43,7 @@ def default() -> Library | None:
 def current() -> Library:
     lib = _current.get() or _default
     if lib is None:
-        raise NoLibrary("no library chosen for this request or job")
+        raise NoLibrary("no library set")
     return lib
 
 
@@ -64,31 +60,8 @@ def use_library(lib: Library) -> Iterator[Library]:
         _current.reset(token)
 
 
-def set_for_request(lib: Library | None):
-    """Choose the library for the rest of this request (returns a token for reset)."""
-    return _current.set(lib)
-
-
-def reset(token) -> None:
-    _current.reset(token)
-
-
-def library_for_user(user_id: int) -> Library:
-    from . import config
-
-    return Library(user_id, config.DATA_DIR / "libraries" / str(user_id))
-
-
 def all_libraries() -> list[Library]:
-    """Every library on disk: the default one (if set and present) plus one per account."""
-    from . import config
-
-    out: list[Library] = []
+    """The library, if its database exists."""
     if _default is not None and (_default.root / "physiquelapse.db").exists():
-        out.append(_default)
-    base = config.DATA_DIR / "libraries"
-    if base.is_dir():
-        for d in sorted(base.iterdir(), key=lambda p: p.name):
-            if d.is_dir() and d.name.isdigit() and (d / "physiquelapse.db").exists():
-                out.append(Library(int(d.name), d))
-    return out
+        return [_default]
+    return []

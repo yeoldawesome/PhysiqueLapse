@@ -134,7 +134,6 @@ export default function ExportDialog({
   defaultFps,
   maxPoseDiff,
   group,
-  seriesId,
   hideSleeves,
   frames = [],
   canvasW = 1080,
@@ -143,8 +142,7 @@ export default function ExportDialog({
   open: boolean;
   onClose: () => void;
   poseId: number | null;
-  group?: "abs" | "face" | "series" | null;
-  seriesId?: number | null;
+  group?: "abs" | "face" | null;
   from?: string;
   to?: string;
   defaultFps: number;
@@ -193,7 +191,6 @@ export default function ExportDialog({
       await post<{ job: Job }>("/exports", {
         pose_id: poseId,
         group: group ?? null,
-        series_id: group === "series" ? seriesId : null,
         from: from || null,
         to: to || null,
         fps: Math.round(fps * 1000) / 1000,

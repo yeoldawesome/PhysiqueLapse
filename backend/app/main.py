@@ -23,9 +23,7 @@ from .db import init_db
 from .jobs import runner
 
 log = logging.getLogger("physiquelapse")
-mimetypes.add_type("application/manifest+json", ".webmanifest")
 mimetypes.add_type("text/javascript", ".js")  # Windows registries sometimes map .js to text/plain
-mimetypes.add_type("application/wasm", ".wasm")  # streaming WebAssembly compile needs this type
 
 
 def _register_job_handlers() -> None:
@@ -44,63 +42,22 @@ def _register_job_handlers() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    if config.SERVER:
-        from . import accounts
-
-        accounts.connect().close()  # creates the accounts database on first start
-    else:
-        init_db()  # the desktop app's one library
+    init_db()
     _register_job_handlers()
     runner().start()
-    log.info("mode: %s, data dir: %s", config.MODE, config.DATA_DIR)
-    if config.SERVER:
-        _server_startup_checks()
+    log.info("data dir: %s", config.DATA_DIR)
     try:
         yield
     finally:
         runner().stop()
 
 
-def _server_startup_checks() -> None:
-    from . import accounts
-
-    n = accounts.count_users()
-    if n == 0:
-        log.warning("no accounts yet. Run: docker compose exec physiquelapse python -m app.accounts create-admin --email you@example.com")
-    if (config.DATA_DIR / "physiquelapse.db").exists():
-        log.warning(
-            "a library from before accounts is in %s. Move it to your account with: "
-            "docker compose exec physiquelapse python -m app.accounts migrate-library --email you@example.com", config.DATA_DIR,
-        )
-    if not config.PUBLIC_URL:
-        log.info("PL_PUBLIC_URL is not set: links in emails use the address the request came in on")
-    # first start of a new volume: fetch the shared models (one time) in the background
-    if config._env_bool("PL_AUTO_DOWNLOAD_MODELS", True):
-        import threading
-
-        from .services import model_files
-
-        def fetch() -> None:
-            for m in model_files.missing("heavy"):
-                try:
-                    log.info("downloading %s from %s", m.label, m.url)
-                    model_files.download(m.url, m.path)
-                except Exception as e:
-                    log.warning("could not download %s: %s", m.label, e)
-
-        threading.Thread(target=fetch, name="model-download", daemon=True).start()
-
-
 def create_app() -> FastAPI:
     app = FastAPI(title="PhysiqueLapse", version="0.1.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json")
 
     from .api import api
-    from .auth import AuthMiddleware, SecurityHeadersMiddleware
 
     app.include_router(api)
-    # both are no-ops in desktop mode (checked per request)
-    app.add_middleware(AuthMiddleware)
-    app.add_middleware(SecurityHeadersMiddleware)
 
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception):
@@ -123,9 +80,7 @@ def create_app() -> FastAPI:
             except ValueError:
                 raise HTTPException(404) from None
             if candidate.is_file():
-                # the service worker and manifest must be re-checked, never served from a stale cache
-                fresh = candidate.name in ("sw.js", "manifest.webmanifest")
-                return FileResponse(candidate, headers={"Cache-Control": "no-cache"} if fresh else None)
+                return FileResponse(candidate)
         if index.exists():
             return FileResponse(index, headers={"Cache-Control": "no-cache"})
         return JSONResponse(
@@ -146,12 +101,7 @@ app = create_app()
 def main() -> None:
     import uvicorn
 
-    kw = {}
-    if config.SERVER:
-        # behind tailscale serve (and Docker's port forward): trust X-Forwarded-* for the
-        # client address and scheme. Safe because the port is published on host loopback only.
-        kw = {"proxy_headers": True, "forwarded_allow_ips": config.TRUSTED_PROXIES, "workers": 1}
-    uvicorn.run("app.main:app", host=config.HOST, port=config.PORT, reload=False, log_level="info", **kw)
+    uvicorn.run("app.main:app", host=config.HOST, port=config.PORT, reload=False, log_level="info")
 
 
 if __name__ == "__main__":

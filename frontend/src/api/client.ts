@@ -8,16 +8,6 @@ export class ApiError extends Error {
   }
 }
 
-let redirecting = false;
-
-/** Server mode: the session ended (logged out elsewhere, expired). Go to the login page once. */
-export function redirectToLogin() {
-  if (redirecting || /^\/(login|signup|forgot|reset|privacy)/.test(window.location.pathname)) return;
-  redirecting = true;
-  const next = window.location.pathname + window.location.search;
-  window.location.assign(`/login?next=${encodeURIComponent(next)}`);
-}
-
 type Params =Record<string, string | number | boolean | null | undefined>;
 
 export function qs(params?: Params): string {
@@ -43,7 +33,6 @@ export async function api<T>(
     body = JSON.stringify(json);
   }
   const res = await fetch(`/api${path}${qs(params)}`, { ...rest, headers, body });
-  if (res.status === 401 && !path.startsWith("/auth/")) redirectToLogin();
   if (!res.ok) {
     let detail = res.statusText;
     try {

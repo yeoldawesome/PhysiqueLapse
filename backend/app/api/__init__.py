@@ -2,11 +2,9 @@
 
 from fastapi import APIRouter
 
-from . import admin, auth, dashboard, imports, jobs, photos, poses, settings
+from . import dashboard, imports, jobs, photos, poses, settings
 
 api = APIRouter(prefix="/api")
-api.include_router(auth.router)
-api.include_router(admin.router)
 api.include_router(dashboard.router)
 api.include_router(settings.router)
 api.include_router(jobs.router)
@@ -17,7 +15,7 @@ api.include_router(imports.router)
 
 def include_optional() -> None:
     """Routers for later milestones register themselves here when their modules exist."""
-    for name in ("landmarks", "alignment", "viewer", "exports", "metrics", "review", "snapchat", "snapchat_zips", "measurements", "abs", "sleeves", "faces", "people", "capture"):
+    for name in ("landmarks", "alignment", "viewer", "exports", "metrics", "review", "snapchat", "snapchat_zips", "measurements", "abs", "sleeves", "faces", "people"):
         try:
             mod = __import__(f"app.api.{name}", fromlist=["router"])
         except ImportError:

@@ -16,7 +16,6 @@ from ..jobs import job_to_dict, runner
 from ..models import ImportCandidate, ImportSession
 from ..schemas import PathIn, session_out
 from ..services import snapchat_zip as SZ
-from .imports import require_import_path
 
 router = APIRouter(prefix="/snapchat", tags=["snapchat"])
 
@@ -130,7 +129,6 @@ def add_path(sid: int, body: PathIn, s: Session = Depends(get_session)) -> dict[
     """A zip file, or a folder: every .zip directly inside it is added."""
     sess = _sess(s, sid, editable=True)
     p = Path(body.path.strip().strip('"')).expanduser()
-    require_import_path(p)
     if p.is_dir():
         found = sorted(q for q in p.iterdir() if q.is_file() and q.suffix.lower() == ".zip")
         if not found:

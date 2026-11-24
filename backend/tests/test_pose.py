@@ -285,7 +285,7 @@ def test_category_changes_survive_restart(client):
     client.patch(f"/api/poses/{cats['front_relaxed']['id']}", json={"name": "Relaxed (front)", "sort_order": 99})
     own = client.post("/api/poses", json={"name": "Most Muscular"}).json()
 
-    db.init_db()  # what happens on every server start
+    db.init_db()  # what happens on every start
     db.init_db()
     after = {c["name"]: c for c in client.get("/api/poses").json()}
     assert "Back Double Bicep" not in after

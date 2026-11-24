@@ -2,6 +2,14 @@
 
 Newest first. Each entry says what was done, what was verified, and what is next, so a new session can resume.
 
+## 2026-11-24 — Local only: server mode, accounts and the mobile version removed
+- Removed: server mode (`PL_MODE`), accounts / login / invites / password resets / admin (`accounts.py`, `auth.py`, `mailer.py`, `quota.py`, `api/auth.py`, `api/admin.py`, Login / Account / Admin pages), Docker (`Dockerfile`, `docker-compose.yml`, `docker/`, `.env.example`), server docs, the GitHub Pages landing page (`site/`, `pages.yml`), CI's server-mode and Docker jobs.
+- Removed the mobile version: Capture page (camera, ghost overlay, live pose matching, daily capture series and their alignment/export, `api/capture.py`, `services/capture.py`), the home-screen install (manifest, service worker, touch icons), the offline upload queue, the phone bottom tab bar (the sidebar is always shown), the in-browser MediaPipe (`@mediapipe/tasks-vision`, `/mediapipe/` files, the extra lite pose model download).
+- The app always listens on `127.0.0.1`; folder import can read any folder; "process uploads automatically" defaults to off.
+- Existing libraries still open: the photo columns from Capture stay (unused); old `capture_series` / `series_alignments` / `auth_*` tables are left alone. Migration 11 no longer adds a foreign key to the dropped `capture_series` table.
+- `tenancy.py` stays as plumbing for the single library (DATA_DIR); the per-account parts are gone.
+- Verified: backend suite (155 passed), ruff, frontend typecheck + build, app starts and serves the UI, `/api/auth/*` is gone (404).
+
 ## 2026-11-24 — GPU acceleration in the Windows app, nothing extra to install
 - **CLIP on any GPU**: `scripts/export_clip_onnx.py` exports ViT-B-32 (image + text encoders) to ONNX; `OnnxClipScorer` (`clip_backend.py`) runs it with ONNX Runtime: DirectML on Windows (`onnxruntime-directml`: NVIDIA, AMD, Intel; discrete GPU preferred on laptops), CUDA where `onnxruntime-gpu` is installed, else CPU. If the GPU can't load the model, or fails mid-run, it logs why and carries on on the CPU. Torch-free tokenizer port (`clip_tokenizer.py`) and numpy preprocessing. `PL_CLIP_DEVICE=cpu` forces the CPU. The PyTorch scorer (source checkouts, Docker) now also uses CUDA when torch has it.
 - **Desktop build**: `build.ps1` exports CLIP to `packaging/clip_onnx` (once) and the spec bundles it and leaves out torch / torchvision / open_clip. First launch no longer downloads the 577 MB CLIP weights (~75 MB of pose/face models remain).

@@ -81,48 +81,12 @@ class Photo(SQLModel, table=True):
     person_status: str | None = Field(default=None, index=True)  # me | not_me | unsure | no_face (None = not scanned)
     person_score: float | None = None  # face similarity to the photos marked "me"
     notes: str | None = None
-    # Capture page: the series a photo was taken in, the photo shown as the ghost, and how
-    capture_series_id: int | None = Field(default=None, foreign_key="capture_series.id", index=True)
+    # from the removed Capture page; kept so libraries that used it still open
+    capture_series_id: int | None = Field(default=None, index=True)
     ghost_photo_id: int | None = None
     capture: dict = Field(default_factory=dict, sa_column=Column(JSON))  # facing, mirror, match score, ...
     created_at: NaiveDatetime = Field(default_factory=now)
     updated_at: NaiveDatetime = Field(default_factory=now)
-
-
-class CaptureSeries(SQLModel, table=True):
-    """A set of photos taken with the Capture page.
-
-    mode=reference: one per pose (created when first opened); the ghost is the pose's reference
-    photo and captures join that pose. mode=daily: its own series (optionally linked to a pose),
-    ghost = its latest photo by default, aligned on its own reference with the settings below."""
-
-    __tablename__ = "capture_series"
-
-    id: int | None = Field(default=None, primary_key=True)
-    name: str
-    mode: str = "reference"  # reference|daily
-    pose_category_id: int | None = Field(default=None, foreign_key="pose_categories.id", index=True)
-    reference_photo_id: int | None = None  # daily: alignment reference (default: its first photo)
-    # ghost
-    ghost_source: str = "reference"  # reference|last|first
-    ghost_style: str = "photo"  # photo|edges|skeleton
-    ghost_opacity: float = 0.4
-    mirror: bool = True
-    camera_facing: str = "user"  # user|environment
-    timer_s: int = 0  # 0|3|5|10
-    auto_capture: bool = False
-    # daily-series alignment (same meaning as on PoseCategory)
-    anchor_mode: str = "auto"
-    scale_basis: str = "torso"
-    rotation_basis: str = "torso"
-    align_method: str | None = "joints"
-    normalize_facing: bool = False
-    framing_zoom: float = 1.0
-    framing_dx: float = 0.0
-    framing_dy: float = 0.0
-    archived: bool = False
-    sort_order: int = 0
-    created_at: NaiveDatetime = Field(default_factory=now)
 
 
 class PoseFeatures(SQLModel, table=True):
@@ -189,31 +153,6 @@ class Alignment(SQLModel, table=True):
     flags: dict = Field(default_factory=dict, sa_column=Column(JSON))
     residual_px: float | None = None
     joint_residual_px: float | None = None  # mean shoulder/elbow/wrist distance to the reference (pose match)
-    output_path: str | None = None
-    stale: bool = False
-    computed_at: NaiveDatetime = Field(default_factory=now)
-
-
-class SeriesAlignment(SQLModel, table=True):
-    """Alignment of a photo inside a daily capture series (its own reference and canvas file),
-    kept apart from the pose alignment so a photo can be in both."""
-
-    __tablename__ = "series_alignments"
-
-    series_id: int = Field(primary_key=True, foreign_key="capture_series.id")
-    photo_id: int = Field(primary_key=True, foreign_key="photos.id")
-    reference_photo_id: int | None = None
-    canvas_w: int = 1080
-    canvas_h: int = 1350
-    scale: float = 1.0
-    rotation_deg: float = 0.0
-    tx: float = 0.0
-    ty: float = 0.0
-    method: str = "auto"
-    scale_basis_used: str = "fit"
-    flags: dict = Field(default_factory=dict, sa_column=Column(JSON))
-    residual_px: float | None = None
-    joint_residual_px: float | None = None
     output_path: str | None = None
     stale: bool = False
     computed_at: NaiveDatetime = Field(default_factory=now)
@@ -345,29 +284,6 @@ class UploadItem(SQLModel, table=True):
     status: str = "open"  # open|complete
     created_at: NaiveDatetime = Field(default_factory=now)
     updated_at: NaiveDatetime = Field(default_factory=now)
-
-
-class AuthState(SQLModel, table=True):
-    """Server mode login: the single user's password hash (argon2). One row, id=1.
-    Kept out of `settings` so the settings API can never return it."""
-
-    __tablename__ = "auth_state"
-
-    id: int = Field(default=1, primary_key=True)
-    password_hash: str
-    updated_at: NaiveDatetime = Field(default_factory=now)
-
-
-class AuthSession(SQLModel, table=True):
-    """A logged-in browser. Only the SHA-256 of the cookie token is stored."""
-
-    __tablename__ = "auth_sessions"
-
-    token_sha256: str = Field(primary_key=True)
-    created_at: NaiveDatetime = Field(default_factory=now)
-    last_seen_at: NaiveDatetime = Field(default_factory=now)
-    expires_at: NaiveDatetime = Field(index=True)
-    user_agent: str = ""
 
 
 class Setting(SQLModel, table=True):

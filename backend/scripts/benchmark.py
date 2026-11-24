@@ -1,7 +1,6 @@
 """Time each processing stage per photo on a sample of the library (read-only).
 
     python -m scripts.benchmark --n 50 --json bench.json          (from backend/)
-    docker compose exec physiquelapse python -m scripts.benchmark --email you@example.com --n 50 --json /data/bench-cpu.json
 
 Stages (per photo unless noted): decode (open + EXIF rotate), thumbs (thumbnail + preview
 JPEGs), landmarks (pose model), classify (features + rules), face (YuNet detect + SFace
@@ -71,19 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--stages", default="decode,thumbs,landmarks,classify,face,clip,align,export")
     ap.add_argument("--clip-batch", type=int, default=16)
     ap.add_argument("--json", help="write the results here")
-    ap.add_argument("--email", help="server: benchmark this account's library")
     a = ap.parse_args(argv)
-    if a.email:
-        from app import accounts, tenancy
-
-        u = accounts.get_user_by_email(a.email)
-        if u is None:
-            print(f"no account {a.email}", file=sys.stderr)
-            return 1
-        tenancy.set_default(tenancy.library_for_user(u.id))
-    elif config.SERVER:
-        print("server mode: pass --email to pick whose library to benchmark", file=sys.stderr)
-        return 1
     stages = [x.strip() for x in a.stages.split(",") if x.strip()]
 
     init_db()

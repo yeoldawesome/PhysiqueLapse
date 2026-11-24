@@ -16,7 +16,6 @@ from ..models import ImportCandidate, ImportSession, Photo, now
 from ..schemas import PathIn, candidate_out, session_out
 from ..services import ingest, snapchat
 from ..settings import load_settings
-from .imports import require_import_path
 
 router = APIRouter(tags=["snapchat"])
 
@@ -24,7 +23,6 @@ router = APIRouter(tags=["snapchat"])
 @router.post("/snapchat/scan")
 def scan(body: PathIn, s: Session = Depends(get_session)) -> dict[str, Any]:
     root = Path(body.path.strip().strip('"')).expanduser()
-    require_import_path(root)
     if not root.is_dir():
         raise HTTPException(404, f"folder not found: {root}")
     return snapchat.scan_summary(s, root)
@@ -33,7 +31,6 @@ def scan(body: PathIn, s: Session = Depends(get_session)) -> dict[str, Any]:
 @router.post("/snapchat/import")
 def start_import(body: PathIn, s: Session = Depends(get_session)) -> dict[str, Any]:
     root = Path(body.path.strip().strip('"')).expanduser()
-    require_import_path(root)
     if not root.is_dir():
         raise HTTPException(404, f"folder not found: {root}")
     settings = load_settings(s)

@@ -7,7 +7,6 @@ import type { ImportSession, Job } from "../api/types";
 import Uploader from "../components/Uploader";
 import SnapchatImport from "../components/SnapchatImport";
 import FolderPicker from "../components/FolderPicker";
-import { useAuthStatus } from "../api/auth";
 import { Modal, PageHeader, Toggle } from "../components/ui";
 import { toast } from "../lib/toast";
 import { fmtDateTime } from "../lib/format";
@@ -98,20 +97,17 @@ export default function Import() {
     }
   };
 
-  const auth = useAuthStatus();
-  const pathImport = auth.data?.path_import ?? true;
   return (
     <div>
       <PageHeader title="Import" subtitle="Originals are copied into the app's data folder. Your source files are never changed." />
       <div className="flex max-w-5xl flex-col gap-4 p-3 md:p-6">
         <Uploader />
 
-        {pathImport && (
         <div className="card p-4">
           <div className="mb-3 flex items-center gap-2">
             <FolderInput size={16} className="text-accent" />
             <h2 className="font-medium">Add a folder by path</h2>
-            <span className="text-xs text-muted">faster for thousands of files; the server reads the folder directly</span>
+            <span className="text-xs text-muted">faster for thousands of files; the app reads the folder directly</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -132,7 +128,6 @@ export default function Import() {
             </button>
           </div>
         </div>
-        )}
 
         <SnapchatImport />
 

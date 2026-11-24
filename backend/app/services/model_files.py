@@ -39,10 +39,6 @@ def required(pose_variant: str = "heavy") -> list[ModelFile]:
         ModelFile("face_recognizer", "face recognizer", config.FACE_MODEL_URLS["recognizer"], config.face_model_path("recognizer"), 37),
         ModelFile("clip", "image model (CLIP)", CLIP_URL, config.clip_weights_path(), 577),
     ]
-    if pose_variant != "lite":
-        # small pose model the Capture page runs in the browser (served by this app, never fetched
-        # by the browser from Google)
-        files.append(ModelFile("pose_lite", "live pose model (browser)", config.POSE_MODEL_URLS["lite"], config.pose_model_path("lite"), 6))
     return files
 
 

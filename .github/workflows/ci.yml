@@ -1,5 +1,5 @@
-# Checks for every push and pull request: backend tests in desktop AND server mode, the
-# frontend type-check + build, and the server Docker image build. (Windows releases: release.yml.)
+# Checks for every push and pull request: backend tests and the frontend type-check + build.
+# (Windows releases: release.yml.)
 name: CI
 
 on:
@@ -17,15 +17,9 @@ concurrency:
 
 jobs:
   backend:
-    name: backend tests (${{ matrix.mode }})
+    name: backend tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        mode: [desktop, server]
-    env:
-      PL_MODE: ${{ matrix.mode }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,7 +30,7 @@ jobs:
       - name: System libraries for OpenCV / MediaPipe
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
       - name: Install (CPU-only PyTorch)
-        run: python -m pip install -e "backend[dev,server]" --extra-index-url https://download.pytorch.org/whl/cpu
+        run: python -m pip install -e "backend[dev]" --extra-index-url https://download.pytorch.org/whl/cpu
       - name: Lint
         working-directory: backend
         run: python -m ruff check app tests
@@ -60,30 +54,3 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
-
-  docker:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - name: Build server image (CPU)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: cpu
-          push: false
-          load: true
-          tags: physiquelapse:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Smoke test (starts, health OK, API needs login)
-        run: |
-          mkdir -p /tmp/pl-data && sudo chown 1000:1000 /tmp/pl-data
-          docker run -d --name pl -p 127.0.0.1:8420:8420 -v /tmp/pl-data:/data -e PL_AUTO_DOWNLOAD_MODELS=0 physiquelapse:ci
-          for i in $(seq 1 60); do curl -fs http://127.0.0.1:8420/api/health && break; sleep 2; done
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8420/api/dashboard)" = "401"
-          echo "long enough test password" | docker exec -i pl python -m app.accounts create-admin --email ci@example.com --stdin
-          curl -fs http://127.0.0.1:8420/ | grep -q '<div id="root">'
-          docker logs pl | tail -20
-          docker rm -f pl

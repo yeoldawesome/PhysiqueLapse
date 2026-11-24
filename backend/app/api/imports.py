@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from .. import config, quota
+from .. import config
 from ..db import get_session
 from ..jobs import job_to_dict, runner
 from ..models import ImportCandidate, ImportSession, UploadItem, now
@@ -32,14 +32,6 @@ def _safe_relpath(raw: str | None, fallback: str) -> Path:
     parts = [p for p in raw.split("/") if p not in ("", ".", "..")]
     parts = [_SAFE_PART.sub("_", p)[:120] or "_" for p in parts]
     return Path(*parts) if parts else Path(_SAFE_PART.sub("_", fallback) or "file")
-
-
-def require_import_path(path: Path) -> None:
-    """Server mode: reading server folders is limited to PL_IMPORT_ROOTS."""
-    if not config.path_import_allowed(path):
-        if not config.IMPORT_ROOTS:
-            raise HTTPException(403, "Importing from server folders is off. Upload from the browser instead.")
-        raise HTTPException(403, "That folder is outside the allowed import folders (PL_IMPORT_ROOTS).")
 
 
 # ----------------------------------------------------------------------------- uploads
@@ -69,33 +61,23 @@ async def upload_files(
         raise HTTPException(404, "upload session not found")
     if sess.status != "open":
         raise HTTPException(409, "upload session already committed")
-    quota.check(request)
     staging = config.INCOMING_DIR / str(session_id)
     staging.mkdir(parents=True, exist_ok=True)
     staged = 0
     for i, up in enumerate(files):
         relp = _safe_relpath(paths[i] if paths and i < len(paths) else None, up.filename or f"file{i}")
-        if config.SERVER and not images.is_image(relp):
-            continue  # server: images only (videos and other files would be skipped by ingest anyway)
         dest = staging / relp
         dest.parent.mkdir(parents=True, exist_ok=True)
         n = 1
         while dest.exists():
             dest = dest.with_name(f"{relp.stem}_{n}{relp.suffix}")
             n += 1
-        cap, written = config.MAX_UPLOAD_MB << 20, 0
         with open(dest, "wb") as f:
             while True:
                 chunk = await up.read(1 << 20)
                 if not chunk:
                     break
-                written += len(chunk)
-                if config.SERVER and written > cap:
-                    break
                 f.write(chunk)
-        if config.SERVER and written > cap:
-            dest.unlink(missing_ok=True)
-            raise HTTPException(413, f"{relp.name} is larger than {config.MAX_UPLOAD_MB} MB")
         if last_modified and i < len(last_modified) and last_modified[i]:
             try:
                 ts = last_modified[i] / 1000.0
@@ -156,7 +138,6 @@ def upload_session_status(session_id: int, s: Session = Depends(get_session)) ->
 @router.post("/upload-session/{session_id}/files/init")
 def upload_init(session_id: int, body: UploadInitIn, request: Request, s: Session = Depends(get_session)) -> dict[str, Any]:
     _open_session(s, session_id)
-    quota.check(request, body.size)
     relp = _safe_relpath(body.rel_path, "file")
     if not images.is_image(relp):
         raise HTTPException(415, f"not an image file: {relp.name}")
@@ -216,7 +197,6 @@ async def upload_chunk(session_id: int, item_id: str, offset: int, request: Requ
                 raise HTTPException(413, "chunk too large")
             f.write(chunk)
     it.received += got
-    quota.added(request, got)
     it.updated_at = now()
     if it.received == it.size:
         dest = config.INCOMING_DIR / str(session_id) / it.rel_path
@@ -280,7 +260,6 @@ def abandon_upload(session_id: int, s: Session = Depends(get_session)) -> dict[s
 @router.post("/folder")
 def import_folder(body: FolderImportIn, s: Session = Depends(get_session)) -> dict[str, Any]:
     root = Path(body.path).expanduser()
-    require_import_path(root)
     if not root.is_dir():
         raise HTTPException(404, f"folder not found: {root}")
     try:
@@ -301,20 +280,12 @@ def import_folder(body: FolderImportIn, s: Session = Depends(get_session)) -> di
 
 @router.post("/browse")
 def browse(body: PathIn) -> dict[str, Any]:
-    """Minimal server-side folder browser for 'add folder by path'."""
+    """Minimal folder browser for 'add folder by path'."""
     raw = (body.path or "").strip()
     roots: list[str] = []
     if os.name == "nt":
         roots = [f"{d}:\\" for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
-    if config.SERVER:
-        if not config.IMPORT_ROOTS:
-            raise HTTPException(403, "Importing from server folders is off. Set PL_IMPORT_ROOTS to allow some folders.")
-        roots = [str(r) for r in config.IMPORT_ROOTS]
-    if not raw:
-        path = config.IMPORT_ROOTS[0] if config.SERVER else Path.home()
-    else:
-        path = Path(raw).expanduser()
-    require_import_path(path)
+    path = Path(raw).expanduser() if raw else Path.home()
     if not path.is_dir():
         raise HTTPException(404, f"not a folder: {path}")
     dirs, n_images, n_other = [], 0, 0
@@ -336,7 +307,7 @@ def browse(body: PathIn) -> dict[str, Any]:
     except PermissionError:
         raise HTTPException(403, f"no permission to read {path}") from None
     dirs.sort(key=str.lower)
-    parent = str(path.parent) if path.parent != path and config.path_import_allowed(path.parent) else None
+    parent = str(path.parent) if path.parent != path else None
     return {"path": str(path), "parent": parent, "dirs": dirs, "images": n_images, "other_files": n_other, "roots": roots}
 
 

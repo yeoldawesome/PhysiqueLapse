@@ -149,18 +149,18 @@ _MIGRATIONS: dict[int, list[str]] = {
         "ALTER TABLE photos ADD COLUMN person_score FLOAT",
         "CREATE INDEX IF NOT EXISTS ix_photos_person_status ON photos (person_status)",
     ],
-    # 9: server mode login (tables auth_state, auth_sessions: new tables, made by create_all)
+    # 9: login tables (since removed)
     9: [],
     # 10: resumable browser uploads (table upload_items, made by create_all)
     10: [],
-    # 11: Capture page (table capture_series by create_all; photo columns here)
+    # 11: Capture page (since removed; the photo columns stay)
     11: [
-        "ALTER TABLE photos ADD COLUMN capture_series_id INTEGER REFERENCES capture_series(id)",
+        "ALTER TABLE photos ADD COLUMN capture_series_id INTEGER",
         "ALTER TABLE photos ADD COLUMN ghost_photo_id INTEGER",
         "ALTER TABLE photos ADD COLUMN capture JSON",
         "CREATE INDEX IF NOT EXISTS ix_photos_capture_series_id ON photos (capture_series_id)",
     ],
-    # 12: daily-series alignment (table series_alignments, made by create_all)
+    # 12: daily-series alignment (since removed)
     12: [],
 }
 

@@ -1,4 +1,4 @@
-import { ApiError, get, post, redirectToLogin } from "../api/client";
+import { ApiError, get, post } from "../api/client";
 import type { ImportSession, Job } from "../api/types";
 
 export interface PickedFile {
@@ -136,7 +136,6 @@ async function putChunk(sid: number, item: UploadItem, blob: Blob, signal?: Abor
     headers: { "Content-Type": "application/octet-stream" },
     signal,
   });
-  if (res.status === 401) redirectToLogin();
   if (!res.ok) {
     let detail = res.statusText;
     try {

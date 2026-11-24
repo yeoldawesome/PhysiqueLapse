@@ -1,4 +1,4 @@
-"""Resumable chunked uploads, HEIC, auto-processing after upload, path imports in server mode."""
+"""Resumable chunked uploads, HEIC, auto-processing after upload."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from datetime import datetime
 
 import pytest
 
-from .conftest import image_bytes, login, make_image, save_image
+from .conftest import image_bytes, make_image, save_image
 
 
 def wait_job(client, job_id, timeout=30):
@@ -155,32 +155,9 @@ def test_auto_process_chains_landmarks_classify_align(client):
                 _REGISTRY[name] = h
 
 
-def test_auto_process_default_follows_mode(data_dir, monkeypatch):
-    from app import config
+def test_auto_process_off_by_default(data_dir):
     from app.services.ingest import auto_process_enabled
     from app.settings import AppSettings
 
-    monkeypatch.setattr(config, "SERVER", True)
-    assert auto_process_enabled(AppSettings()) is True
-    monkeypatch.setattr(config, "SERVER", False)
     assert auto_process_enabled(AppSettings()) is False
     assert auto_process_enabled(AppSettings(auto_process_uploads=True)) is True
-
-
-def test_server_mode_path_import_needs_allowed_root(server_client, monkeypatch, tmp_path):
-    from app import config
-
-    c = server_client
-    login(c)
-    folder = tmp_path / "photos"
-    folder.mkdir()
-    monkeypatch.setattr(config, "IMPORT_ROOTS", [])
-    assert c.post("/api/imports/folder", json={"path": str(folder)}).status_code == 403
-    assert c.post("/api/imports/browse", json={"path": ""}).status_code == 403
-    assert c.post("/api/snapchat/scan", json={"path": str(folder)}).status_code == 403
-    monkeypatch.setattr(config, "IMPORT_ROOTS", [folder.resolve()])
-    assert c.post("/api/imports/folder", json={"path": str(tmp_path)}).status_code == 403  # parent: outside
-    assert c.post("/api/imports/folder", json={"path": str(folder / ".." / "..")}).status_code == 403
-    assert c.post("/api/imports/folder", json={"path": str(folder)}).status_code == 200
-    b = c.post("/api/imports/browse", json={"path": ""}).json()
-    assert b["path"] == str(folder.resolve()) and b["parent"] is None

@@ -5,7 +5,7 @@ def test_missing_models_and_download(client, tmp_path):
     from app.services import model_files as MF
 
     r = client.get("/api/system/models").json()  # the test data folder has no models
-    assert {m["key"] for m in r["missing"]} == {"pose_heavy", "face_detector", "face_recognizer", "clip", "pose_lite"}
+    assert {m["key"] for m in r["missing"]} == {"pose_heavy", "face_detector", "face_recognizer", "clip"}
     assert r["missing_mb"] > 600
 
     src = tmp_path / "src.bin"

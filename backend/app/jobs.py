@@ -9,7 +9,6 @@ is cancelled or dies with the process can simply be run again and continues.
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 import traceback
@@ -239,7 +238,6 @@ class JobRunner:
 
     # ---- worker --------------------------------------------------------------
     def _worker(self, lane: str) -> None:
-        _lower_priority()
         q = self._queues[lane]
         while not self._stop.is_set():
             item = q.get()
@@ -324,21 +322,6 @@ class JobRunner:
         if rest:
             p["chain"] = [{"type": t, "params": pp} for t, pp in rest]
         return self.enqueue(t0, p, dedupe=False)
-
-
-def _lower_priority() -> None:
-    """Server mode: job threads run at a lower CPU priority so heavy work never starves the
-    web requests or other apps on the machine. On Linux a thread is its own scheduling task,
-    so this affects only the calling worker thread (and processes it starts)."""
-    from . import config
-
-    if config.JOB_NICE <= 0 or not hasattr(os, "setpriority"):
-        return
-    try:
-        tid = threading.get_native_id()
-        os.setpriority(os.PRIO_PROCESS, tid, min(19, os.getpriority(os.PRIO_PROCESS, tid) + config.JOB_NICE))
-    except OSError as e:
-        log.warning("could not lower job priority: %s", e)
 
 
 _runner: JobRunner | None = None
