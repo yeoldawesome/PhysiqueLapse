@@ -30,6 +30,10 @@ dependencies = [
   "torch>=2.6; sys_platform != 'darwin' or platform_machine != 'x86_64'",
   "torchvision; sys_platform != 'darwin' or platform_machine != 'x86_64'",
   "open_clip_torch>=2.26; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+  # MediaPipe depends on jax; jaxlib's last Intel-Mac build is 0.4.38, and without this pin pip
+  # spends many minutes trying every newer jax release before settling on it
+  "jax<0.5; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+  "jaxlib<0.5; sys_platform == 'darwin' and platform_machine == 'x86_64'",
   "imageio-ffmpeg>=0.5",
   # CLIP on any GPU without PyTorch (see app/services/clip_backend.py). On Windows the DirectML
   # build (NVIDIA, AMD, Intel GPUs; falls back to the CPU); it replaces the plain package there.
