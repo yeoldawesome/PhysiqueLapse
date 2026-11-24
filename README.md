@@ -4,7 +4,9 @@ A local-only physique progress tracker. Import progress photos, date them, sort 
 
 Everything runs on this computer. The server binds to `127.0.0.1` only. The only network traffic is installing dependencies and the one-time model download.
 
-## Download (Windows app)
+## Download (Windows and Mac)
+
+### Windows
 
 Get **`PhysiqueLapse-<version>-Setup.exe`** from the [Releases page](../../releases/latest), run it, and open PhysiqueLapse from the Start menu. It runs in its own window; no Python, Node or browser setup needed.
 
@@ -16,6 +18,15 @@ Get **`PhysiqueLapse-<version>-Setup.exe`** from the [Releases page](../../relea
 - Prefer no installer? Download **`PhysiqueLapse-<version>-portable.zip`**, unzip anywhere and run `PhysiqueLapse.exe`.
 - New here? The app opens on a **Start here** page that walks through everything.
 
+### Mac (Apple Silicon: M1 or newer, macOS 12+)
+
+Get **`PhysiqueLapse-<version>-mac.dmg`** from the [Releases page](../../releases/latest), open it and drag **PhysiqueLapse** into **Applications**.
+
+- The app isn't notarized by Apple, so the first launch is blocked: open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to PhysiqueLapse. (Or once in Terminal: `xattr -dr com.apple.quarantine /Applications/PhysiqueLapse.app`.)
+- The image model runs on the Apple GPU / Neural Engine (Core ML) and video export on the hardware encoder (VideoToolbox), with the CPU as fallback.
+- Your library lives in `~/Library/Application Support/PhysiqueLapse`. Deleting the app keeps it.
+- Intel Macs aren't built; run from source there (`./start.sh`).
+
 ### Building the app yourself
 
 ```powershell
@@ -24,7 +35,9 @@ Get **`PhysiqueLapse-<version>-Setup.exe`** from the [Releases page](../../relea
 .\packaging\build.ps1 -Version 0.2.0                   # -> packaging\out\ (portable zip; installer too if Inno Setup 6 is installed)
 ```
 
-Releases are built by GitHub Actions (`.github/workflows/release.yml`): push a tag such as `v0.2.0` and the installer and zip are attached to a new release. Run the app from source in its window with `cd backend; ..\.venv\Scripts\python -m app.desktop`.
+Mac: `python3.12 -m venv .venv && .venv/bin/pip install -e "backend[desktop]" && ./packaging/build-mac.sh 0.2.0` (-> `packaging/out/PhysiqueLapse-0.2.0-mac.dmg`).
+
+Releases are built by GitHub Actions (`.github/workflows/release.yml`) on Windows and macOS runners: push a tag such as `v0.2.0`, or use **Actions → Release desktop apps → Run workflow** with a version, and the Windows installer, zip and Mac disk image are attached to a new release. Run the app from source in its window with `cd backend; ..\.venv\Scripts\python -m app.desktop`.
 
 ## Quick start from source (Windows)
 

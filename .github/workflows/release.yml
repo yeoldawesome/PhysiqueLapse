@@ -1,12 +1,13 @@
-# Builds the Windows app and publishes it as a GitHub Release.
+# Builds the Windows and Mac apps and publishes them as a GitHub Release.
 #
 #   git tag v0.2.0 && git push origin v0.2.0
 #
-# -> Releases page gets PhysiqueLapse-0.2.0-Setup.exe (installer) and
-#    PhysiqueLapse-0.2.0-portable.zip (unzip and run PhysiqueLapse.exe).
+# -> Releases page gets PhysiqueLapse-0.2.0-Setup.exe (Windows installer),
+#    PhysiqueLapse-0.2.0-portable.zip (Windows, unzip and run PhysiqueLapse.exe) and
+#    PhysiqueLapse-0.2.0-mac.dmg (Apple Silicon Mac, drag to Applications).
 # "Run workflow" on the Actions tab builds the same files as a downloadable artifact without a release,
 # or, with a version filled in (e.g. 0.2.0), also creates the tag v0.2.0 on that commit and publishes it.
-name: Release Windows app
+name: Release desktop apps
 
 on:
   push:
@@ -25,7 +26,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -69,25 +70,97 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: PhysiqueLapse-windows
-          path: packaging/out/*
+          path: |
+            packaging/out/*-Setup.exe
+            packaging/out/*-portable.zip
           retention-days: 14
 
+  mac:
+    runs-on: macos-latest  # Apple Silicon
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Python dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e "backend[dev,desktop]"
+
+      - name: Run tests
+        working-directory: backend
+        run: ../.venv/bin/python -m pytest -q
+
+      - name: Build app and disk image
+        run: |
+          v="${{ env.RELEASE_TAG }}"
+          ./packaging/build-mac.sh "${v#v}"
+
+      - name: Smoke test (the built app starts and serves its API)
+        run: |
+          APPDATA="$HOME/Library/Application Support/PhysiqueLapse"
+          rm -f "$APPDATA/app.port"
+          packaging/dist/PhysiqueLapse.app/Contents/MacOS/PhysiqueLapse &
+          PID=$!
+          for i in $(seq 1 90); do [ -f "$APPDATA/app.port" ] && break; sleep 2; done
+          PORT=$(cat "$APPDATA/app.port")
+          for i in $(seq 1 60); do curl -fs "http://127.0.0.1:$PORT/api/health" && break; sleep 2; done
+          echo
+          curl -fs "http://127.0.0.1:$PORT/api/system" | python3 -c "import json,sys; d=json.load(sys.stdin); print('acceleration:', d['acceleration']); print('clip:', d['models']['clip']['present'])"
+          curl -fs "http://127.0.0.1:$PORT/" | grep -q '<div id="root">'
+          kill $PID || true
+          tail -30 "$APPDATA/logs/physiquelapse.log" || true
+
+      - name: Upload build (workflow artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhysiqueLapse-mac
+          path: packaging/out/*.dmg
+          retention-days: 14
+
+  publish:
+    if: github.ref_type == 'tag' || inputs.version != ''
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
       - name: Publish release
-        if: env.RELEASE_TAG != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           target_commitish: ${{ github.sha }}
           name: PhysiqueLapse ${{ env.RELEASE_TAG }}
           files: |
-            packaging/out/*-Setup.exe
-            packaging/out/*-portable.zip
+            out/*-Setup.exe
+            out/*-portable.zip
+            out/*-mac.dmg
           generate_release_notes: true
           body: |
             ## Download
+            **Windows 10 or 11 (64-bit)**
             - **PhysiqueLapse-…-Setup.exe**: installer (recommended). No admin rights needed.
             - **PhysiqueLapse-…-portable.zip**: no install; unzip anywhere and run `PhysiqueLapse.exe`.
+            - Windows may show "Windows protected your PC" because the app isn't code-signed: click **More info → Run anyway**.
 
-            Windows 10 or 11 (64-bit). Nothing else to install: the image model runs on your GPU (NVIDIA, AMD or Intel, through DirectML) and falls back to the CPU when there isn't one; video export uses the GPU's encoder when it has one. On first launch the app downloads its pose and face models (~75 MB, one time).
-            Windows may show "Windows protected your PC" because the app isn't code-signed: click **More info → Run anyway**.
-            Your photos stay on your computer, in `%LOCALAPPDATA%\PhysiqueLapse`.
+            **Mac with Apple Silicon (M1 or newer), macOS 12+**
+            - **PhysiqueLapse-…-mac.dmg**: open it and drag PhysiqueLapse into Applications.
+            - The app isn't notarized by Apple, so the first time macOS refuses to open it: open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to PhysiqueLapse (or run `xattr -dr com.apple.quarantine /Applications/PhysiqueLapse.app` in Terminal once).
+
+            Nothing else to install. The image model runs on your GPU (Windows: NVIDIA, AMD or Intel through DirectML; Mac: the Apple GPU / Neural Engine through Core ML) and falls back to the CPU; video export uses the hardware encoder when there is one. On first launch the app downloads its pose and face models (~75 MB, one time).
+            Your photos stay on your computer: `%LOCALAPPDATA%\PhysiqueLapse` on Windows, `~/Library/Application Support/PhysiqueLapse` on a Mac.

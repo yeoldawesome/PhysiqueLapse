@@ -20,12 +20,16 @@ BACKEND_ROOT = PROJECT_ROOT / "backend"
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
 # The desktop build (PyInstaller): the built website is bundled next to the code, and each
-# Windows user's library lives in %LOCALAPPDATA%\PhysiqueLapse, so installing, updating or
-# uninstalling the program never touches it.
+# user's library lives in their own app-data folder (Windows: %LOCALAPPDATA%\PhysiqueLapse,
+# Mac: ~/Library/Application Support/PhysiqueLapse), so installing, updating or uninstalling
+# the program never touches it.
 FROZEN = bool(getattr(sys, "frozen", False))
 if FROZEN:
     FRONTEND_DIST = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "frontend_dist"
-    _default_data = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "PhysiqueLapse"
+    if sys.platform == "darwin":
+        _default_data = Path.home() / "Library" / "Application Support" / "PhysiqueLapse"
+    else:
+        _default_data = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "PhysiqueLapse"
 else:
     _default_data = PROJECT_ROOT / "data"
 

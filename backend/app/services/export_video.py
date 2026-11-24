@@ -44,8 +44,8 @@ def ffmpeg_exe() -> str:
 
 
 # hardware H.264 encoders, tried in this order; the first that encodes a test clip is used.
-# NVIDIA (NVENC), AMD (AMF), Intel (Quick Sync). libx264 (CPU) is the fallback.
-_HW_ENCODERS = ("h264_nvenc", "h264_amf", "h264_qsv")
+# Mac (VideoToolbox), NVIDIA (NVENC), AMD (AMF), Intel (Quick Sync). libx264 (CPU) is the fallback.
+_HW_ENCODERS = ("h264_videotoolbox", "h264_nvenc", "h264_amf", "h264_qsv")
 _encoder: str | None = None
 _encoder_lock = threading.Lock()
 
@@ -98,6 +98,9 @@ def _hw_quality(enc: str, quality: int) -> list[str]:
         return ["-quality", "quality", "-rc", "cqp", "-qp_i", q, "-qp_p", q, "-qp_b", q]
     if enc == "h264_qsv":
         return ["-preset", "slower", "-global_quality", q]
+    if enc == "h264_videotoolbox":
+        # constant quality 1-100 (higher = better), Apple Silicon
+        return ["-q:v", str(max(1, min(100, quality * 10)))]
     return []
 
 

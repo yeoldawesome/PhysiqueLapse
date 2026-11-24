@@ -1,14 +1,14 @@
-"""PhysiqueLapse as a Windows desktop app.
+"""PhysiqueLapse as a desktop app (Windows and Mac).
 
 Starts the same local server the browser version uses (on a free port, reachable only from
-this computer) and shows the app in its own window (pywebview on Microsoft Edge WebView2, which
-ships with Windows 10 and 11). Closing the window stops everything.
+this computer) and shows the app in its own window (pywebview: Microsoft Edge WebView2 on
+Windows 10 and 11, the system WebKit on a Mac). Closing the window stops everything.
 
 First launch: the model files are downloaded in the background (progress in the job panel), and
 an empty library opens on the "Start here" guide.
 
 Run from a source checkout:  .venv\\Scripts\\python -m app.desktop   (in backend/)
-The installer build (packaging/) freezes this module into PhysiqueLapse.exe.
+The builds in packaging/ freeze this module into PhysiqueLapse.exe / PhysiqueLapse.app.
 """
 
 from __future__ import annotations
@@ -177,7 +177,8 @@ def main() -> None:
         window.load_url(url + start)
 
     try:
-        webview.start(boot, gui="edgechromium", private_mode=False, storage_path=str(config.DATA_DIR / "webview"))
+        gui = "edgechromium" if sys.platform == "win32" else None  # Mac: Cocoa / WebKit
+        webview.start(boot, gui=gui, private_mode=False, storage_path=str(config.DATA_DIR / "webview"))
     finally:
         if server is not None:
             log.info("window closed: stopping")

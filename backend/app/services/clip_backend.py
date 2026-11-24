@@ -2,8 +2,8 @@
 
 Two interchangeable backends:
 - OnnxClipScorer: the model exported to ONNX (scripts/export_clip_onnx.py), run by ONNX Runtime
-  on the GPU when there is one (DirectML on Windows: NVIDIA, AMD and Intel; CUDA with
-  onnxruntime-gpu), else on the CPU. No PyTorch needed; the desktop app ships this.
+  on the GPU when there is one (DirectML on Windows: NVIDIA, AMD and Intel; Core ML on a Mac:
+  the Apple GPU / Neural Engine; CUDA with onnxruntime-gpu), else on the CPU. No PyTorch needed; the desktop app ships this.
 - OpenClipScorer: open_clip + PyTorch (source checkouts, Docker). Uses CUDA when torch has it.
   Weights are fetched once by scripts/download_models.py into data/models/; at runtime
   HF_HUB_OFFLINE is forced so nothing reaches the network.
@@ -128,8 +128,8 @@ def _want_gpu() -> bool:
 
 
 # ONNX Runtime execution providers to try, best first. onnxruntime-directml (Windows) brings Dml,
-# onnxruntime-gpu brings CUDA; the CPU provider is always there.
-_GPU_PROVIDERS = {"CUDAExecutionProvider": "CUDA", "DmlExecutionProvider": "DirectML"}
+# the macOS wheel brings Core ML, onnxruntime-gpu brings CUDA; the CPU provider is always there.
+_GPU_PROVIDERS = {"CUDAExecutionProvider": "CUDA", "DmlExecutionProvider": "DirectML", "CoreMLExecutionProvider": "Core ML"}
 
 
 def _ort_gpu_provider() -> str | None:
@@ -188,6 +188,12 @@ class OnnxClipScorer:
             so.enable_mem_pattern = False
             so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
             providers.insert(0, (gpu, {"performance_preference": "high_performance", "device_filter": "gpu"}))
+        elif gpu == "CoreMLExecutionProvider":
+            # ML Program format runs on the Apple GPU / Neural Engine; the compiled model is cached
+            # so later launches don't compile it again
+            cache = config.MODELS_DIR / "coreml_cache"
+            cache.mkdir(parents=True, exist_ok=True)
+            providers.insert(0, (gpu, {"ModelFormat": "MLProgram", "MLComputeUnits": "ALL", "ModelCacheDirectory": str(cache)}))
         elif gpu:
             providers.insert(0, gpu)
         else:
@@ -197,9 +203,9 @@ class OnnxClipScorer:
             try:
                 return ort.InferenceSession(str(self.dir / name), so, providers=providers)
             except Exception:
-                if gpu != "DmlExecutionProvider":
+                if gpu not in ("DmlExecutionProvider", "CoreMLExecutionProvider"):
                     raise
-                # older onnxruntime-directml without the adapter options
+                # an older onnxruntime without these provider options
                 return ort.InferenceSession(str(self.dir / name), so, providers=[gpu, "CPUExecutionProvider"])
 
         self.visual = session("visual.onnx")
