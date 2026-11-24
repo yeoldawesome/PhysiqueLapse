@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="PhysiqueLapse", version="0.1.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json")
+    app = FastAPI(title="PhysiqueLapse", version="0.1.1", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json")
 
     from .api import api
 

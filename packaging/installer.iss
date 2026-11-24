@@ -3,7 +3,7 @@
 ; %LOCALAPPDATA%\PhysiqueLapse and are kept on uninstall unless the user chooses otherwise.
 
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "0.1.1"
 #endif
 
 [Setup]
